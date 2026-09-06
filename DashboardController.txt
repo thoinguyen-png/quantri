@@ -1,0 +1,939 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\User;
+use App\Models\Branch;
+use App\Models\Shift;
+use App\Models\Attendance;
+use App\Models\AttendanceSupplementRequest;
+use App\Models\CustomerRating;
+use App\Models\CustomerRatingReward;
+use App\Models\LeaveRequest;
+use App\Models\Setting;
+use App\Models\ShiftAssignment;
+use App\Notifications\CustomerRatingReceivedNotification;
+use App\Services\AttendanceStatusService;
+use App\Services\ShiftScheduleService;
+use Carbon\Carbon;
+use Carbon\CarbonPeriod;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+
+class DashboardController extends Controller
+{
+    public function index(Request $request)
+    {
+        return response()
+            ->view('dashboard.home', [
+            'summaryEndpoint' => route('dashboard.rating-summary', absolute: false),
+            'user' => $request->user(),
+            ])
+            ->withHeaders($this->noStoreHeaders());
+    }
+
+    public function attendance(Request $request)
+    {
+        $user = auth()->user();
+
+        if (in_array($user->role, ['staff', 'manager', 'cashier'], true)) {
+            return response()
+                ->view('dashboard.staff', $this->employeeDashboardData($user, $request))
+                ->withHeaders($this->noStoreHeaders());
+        }
+
+        return response()
+            ->view('dashboard.admin', $this->adminDashboardData())
+            ->withHeaders($this->noStoreHeaders());
+    }
+
+    public function ratingSummary(Request $request): JsonResponse
+    {
+        return response()
+            ->json($this->homeRatingData($request->user()))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    private function homeRatingData(User $user): array
+    {
+        return [
+            'personal' => $this->homePersonalRatingData($user),
+            'branch' => $this->homeBranchRatingData($user),
+        ];
+    }
+
+    private function homePersonalRatingData(User $user): array
+    {
+        $canReceiveRatings = in_array($user->role, ['staff', 'cashier', 'manager'], true)
+            && (bool) $user->rating_qr_enabled;
+
+        if (!$canReceiveRatings) {
+            return [
+                'can_receive_ratings' => false,
+                'counts' => $this->emptyRatingCounts(),
+                'items' => [],
+            ];
+        }
+
+        $query = CustomerRating::with(['employee', 'reward'])
+            ->where('employee_id', $user->id);
+
+        $ratingCounts = (clone $query)
+            ->selectRaw('rating, count(*) as aggregate')
+            ->groupBy('rating')
+            ->pluck('aggregate', 'rating');
+
+        $items = (clone $query)
+            ->latest('submitted_at')
+            ->limit(2)
+            ->get()
+            ->map(fn (CustomerRating $rating) => $this->homeRatingPayload($rating))
+            ->values();
+
+        return [
+            'can_receive_ratings' => true,
+            'counts' => [
+                CustomerRating::RATING_GOOD => (int) ($ratingCounts[CustomerRating::RATING_GOOD] ?? 0),
+                CustomerRating::RATING_AVERAGE => (int) ($ratingCounts[CustomerRating::RATING_AVERAGE] ?? 0),
+                CustomerRating::RATING_BAD => (int) ($ratingCounts[CustomerRating::RATING_BAD] ?? 0),
+            ],
+            'items' => $items,
+        ];
+    }
+
+    private function homeBranchRatingData(User $user): array
+    {
+        $query = CustomerRating::with(['employee', 'reward'])
+            ->latest('submitted_at');
+
+        if ($user->role !== 'admin') {
+            if (!$user->branch_id) {
+                return ['items' => []];
+            }
+
+            $query->where('branch_id', $user->branch_id);
+        }
+
+        $items = $query
+            ->limit(50)
+            ->get()
+            ->unique('employee_id')
+            ->take(3)
+            ->map(fn (CustomerRating $rating) => $this->homeRatingPayload($rating))
+            ->values();
+
+        return ['items' => $items];
+    }
+
+    private function emptyRatingCounts(): array
+    {
+        return [
+            CustomerRating::RATING_GOOD => 0,
+            CustomerRating::RATING_AVERAGE => 0,
+            CustomerRating::RATING_BAD => 0,
+        ];
+    }
+
+    private function homeRatingPayload(CustomerRating $rating): array
+    {
+        $employeeName = $rating->employee?->name ?? 'Nhan su';
+
+        return [
+            'id' => $rating->id,
+            'employee_name' => $employeeName,
+            'employee_initial' => mb_strtoupper(mb_substr(trim($employeeName), 0, 1)),
+            'rating' => $rating->rating,
+            'rating_label' => $this->ratingLabel($rating->rating),
+            'rating_tone' => $this->ratingTone($rating->rating),
+            'comment' => $rating->comment,
+            'submitted_at_label' => $rating->submitted_at?->format('H:i d/m/Y'),
+            'reward_status_label' => CustomerRatingReceivedNotification::rewardStatusLabel(
+                $rating->reward?->status,
+                $rating->reward?->reason_code
+            ),
+        ];
+    }
+
+    private function employeeDashboardData(User $user, Request $request): array
+    {
+        $month = $request->input('month', now()->format('Y-m'));
+        $start = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        $days = collect(CarbonPeriod::create($start, $end))->values();
+
+        $attendances = Attendance::with(['shift.segments', 'segments'])
+            ->where('user_id', $user->id)
+            ->forWorkDateBetween($start, $end)
+            ->get()
+            ->keyBy(fn (Attendance $attendance) => $attendance->work_date?->toDateString() ?? $attendance->checkin_at->toDateString());
+
+        $assignments = ShiftAssignment::with('shift.segments')
+            ->where('user_id', $user->id)
+            ->where(function ($query) use ($start, $end) {
+                $query->whereNull('work_date')
+                    ->orWhereBetween('work_date', [$start->toDateString(), $end->toDateString()]);
+            })
+            ->get();
+
+        $leaves = LeaveRequest::where('user_id', $user->id)
+            ->where('status', 'approved')
+            ->whereDate('start_date', '<=', $end->toDateString())
+            ->whereDate('end_date', '>=', $start->toDateString())
+            ->get();
+
+        $supplements = AttendanceSupplementRequest::where('user_id', $user->id)
+            ->where('status', 'approved')
+            ->whereBetween('work_date', [$start->toDateString(), $end->toDateString()])
+            ->get()
+            ->keyBy(fn (AttendanceSupplementRequest $request) => $request->work_date?->toDateString());
+
+        $cells = $days->mapWithKeys(function (Carbon $day) use ($attendances, $assignments, $leaves, $supplements) {
+            $attendance = $attendances->get($day->toDateString());
+            $assignment = $this->effectiveAssignmentForDay($assignments, $day);
+            $leave = $leaves->first(fn (LeaveRequest $leave) => $day->betweenIncluded($leave->start_date, $leave->end_date));
+            $supplement = $supplements->get($day->toDateString());
+
+            return [$day->toDateString() => $this->employeeDayCell($day, $attendance, $assignment, $leave, $supplement)];
+        });
+
+        $summary = [
+            'complete' => $cells->where('work_status', 'complete')->count(),
+            'missing' => $cells->where('work_status', 'missing')->count(),
+            'off' => $cells->where('status', 'leave_approved')->count(),
+            'absent' => $cells->where('status', 'absent_without_leave')->count(),
+            'overtime' => $cells->where('overtime_hours', '>', 0)->sum('overtime_hours'),
+        ];
+
+        $firstWeekday = (int) $start->dayOfWeekIso;
+        $calendarLeadingDays = $firstWeekday - 1;
+
+        $managerRatingDashboard = $user->role === 'manager'
+            ? $this->managerRatingDashboardData($user, $start, $end)
+            : null;
+
+        return compact('calendarLeadingDays', 'cells', 'days', 'managerRatingDashboard', 'month', 'summary', 'user');
+    }
+
+
+    private function ratingLabel(?string $rating): string
+    {
+        return match ($rating) {
+            CustomerRating::RATING_BAD => 'Tệ',
+            CustomerRating::RATING_AVERAGE => 'Trung bình',
+            CustomerRating::RATING_GOOD => 'Tốt',
+            default => 'Đánh giá',
+        };
+    }
+
+    private function ratingTone(?string $rating): string
+    {
+        return match ($rating) {
+            CustomerRating::RATING_BAD => 'bad',
+            CustomerRating::RATING_AVERAGE => 'average',
+            CustomerRating::RATING_GOOD => 'good',
+            default => 'neutral',
+        };
+    }
+
+    private function noStoreHeaders(): array
+    {
+        return [
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0, private',
+            'Pragma' => 'no-cache',
+            'Expires' => '0',
+        ];
+    }
+
+    private function managerRatingDashboardData(User $manager, Carbon $start, Carbon $end): array
+    {
+        $branchId = (int) $manager->branch_id;
+
+        if ($branchId <= 0) {
+            return [
+                'branch_id' => null,
+                'counts' => [
+                    CustomerRating::RATING_GOOD => 0,
+                    CustomerRating::RATING_AVERAGE => 0,
+                    CustomerRating::RATING_BAD => 0,
+                ],
+                'latest' => collect(),
+                'bad_feedback' => collect(),
+                'performance' => collect(),
+                'reward_history' => collect(),
+                'qr_users' => collect(),
+                'month_label' => $start->format('m/Y'),
+            ];
+        }
+
+        $ratingQuery = CustomerRating::with(['employee', 'reward'])
+            ->where('branch_id', $branchId)
+            ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+
+        $ratingCounts = (clone $ratingQuery)
+            ->selectRaw('rating, count(*) as aggregate')
+            ->groupBy('rating')
+            ->pluck('aggregate', 'rating');
+
+        $latestRatings = (clone $ratingQuery)
+            ->latest('submitted_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (CustomerRating $rating) => $this->managerRatingPayload($rating));
+
+        $badFeedback = (clone $ratingQuery)
+            ->where('rating', CustomerRating::RATING_BAD)
+            ->latest('submitted_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (CustomerRating $rating) => $this->managerRatingPayload($rating));
+
+        $employees = User::query()
+            ->where('branch_id', $branchId)
+            ->whereIn('role', ['staff', 'cashier', 'manager'])
+            ->withCount([
+                'customerRatings as good_ratings_count' => function ($query) use ($start, $end, $branchId) {
+                    $query->where('branch_id', $branchId)
+                        ->where('rating', CustomerRating::RATING_GOOD)
+                        ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+                },
+                'customerRatings as average_ratings_count' => function ($query) use ($start, $end, $branchId) {
+                    $query->where('branch_id', $branchId)
+                        ->where('rating', CustomerRating::RATING_AVERAGE)
+                        ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+                },
+                'customerRatings as bad_ratings_count' => function ($query) use ($start, $end, $branchId) {
+                    $query->where('branch_id', $branchId)
+                        ->where('rating', CustomerRating::RATING_BAD)
+                        ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+                },
+            ])
+            ->orderByDesc('good_ratings_count')
+            ->orderBy('name')
+            ->limit(12)
+            ->get()
+            ->map(fn (User $employee) => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'role' => $employee->role,
+                'good' => (int) $employee->good_ratings_count,
+                'average' => (int) $employee->average_ratings_count,
+                'bad' => (int) $employee->bad_ratings_count,
+                'total' => (int) $employee->good_ratings_count + (int) $employee->average_ratings_count + (int) $employee->bad_ratings_count,
+            ]);
+
+        $rewardHistory = CustomerRatingReward::with(['employee', 'customerRating'])
+            ->where('branch_id', $branchId)
+            ->whereBetween('business_date', [$start->toDateString(), $end->toDateString()])
+            ->latest('business_date')
+            ->latest('id')
+            ->limit(10)
+            ->get()
+            ->map(fn (CustomerRatingReward $reward) => [
+                'id' => $reward->id,
+                'employee_name' => $reward->employee?->name ?? 'Nhan su',
+                'business_date' => $reward->business_date?->format('d/m/Y'),
+                'amount_label' => number_format((int) $reward->amount, 0, ',', '.') . 'đ',
+                'status' => $reward->status,
+                'status_label' => CustomerRatingReceivedNotification::rewardStatusLabel($reward->status, $reward->reason_code),
+                'rating_label' => $this->ratingLabel($reward->customerRating?->rating),
+            ]);
+
+        $qrUsers = User::query()
+            ->where('branch_id', $branchId)
+            ->whereIn('role', ['staff', 'cashier'])
+            ->where('rating_qr_enabled', true)
+            ->orderBy('name')
+            ->limit(12)
+            ->get()
+            ->map(fn (User $employee) => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'role' => $employee->role,
+                'show_url' => route('rating-qrs.svg', $employee, absolute: false),
+                'download_url' => route('rating-qrs.download', $employee, absolute: false),
+            ]);
+
+        return [
+            'branch_id' => $branchId,
+            'counts' => [
+                CustomerRating::RATING_GOOD => (int) ($ratingCounts[CustomerRating::RATING_GOOD] ?? 0),
+                CustomerRating::RATING_AVERAGE => (int) ($ratingCounts[CustomerRating::RATING_AVERAGE] ?? 0),
+                CustomerRating::RATING_BAD => (int) ($ratingCounts[CustomerRating::RATING_BAD] ?? 0),
+            ],
+            'latest' => $latestRatings,
+            'bad_feedback' => $badFeedback,
+            'performance' => $employees,
+            'reward_history' => $rewardHistory,
+            'qr_users' => $qrUsers,
+            'month_label' => $start->format('m/Y'),
+        ];
+    }
+
+    private function managerRatingPayload(CustomerRating $rating): array
+    {
+        return [
+            'id' => $rating->id,
+            'employee_name' => $rating->employee?->name ?? 'Nhan su',
+            'rating' => $rating->rating,
+            'rating_label' => $this->ratingLabel($rating->rating),
+            'rating_tone' => $this->ratingTone($rating->rating),
+            'comment' => $rating->comment,
+            'submitted_at' => $rating->submitted_at?->format('H:i d/m/Y'),
+            'reward_status_label' => CustomerRatingReceivedNotification::rewardStatusLabel(
+                $rating->reward?->status,
+                $rating->reward?->reason_code
+            ),
+        ];
+    }
+
+    private function adminDashboardData(): array
+    {
+        $today = today();
+        $usersQuery = User::whereIn('role', ['staff', 'manager', 'cashier']);
+        $totalUsers = (clone $usersQuery)->count();
+        $todayAttendances = Attendance::with('user')
+            ->forWorkDate($today)
+            ->get();
+        $checkedIn = $todayAttendances->pluck('user_id')->unique()->count();
+        $checkedPercent = $totalUsers > 0 ? round($checkedIn / $totalUsers * 100) : 0;
+        $notChecked = max($totalUsers - $checkedIn, 0);
+        $notCheckedPercent = $totalUsers > 0 ? round($notChecked / $totalUsers * 100) : 0;
+        $lateCount = $todayAttendances->where('late_minutes', '>', 0)->pluck('user_id')->unique()->count();
+        $leaveCount = LeaveRequest::where('status', 'approved')
+            ->whereDate('start_date', '<=', $today)
+            ->whereDate('end_date', '>=', $today)
+            ->count();
+        $missingCheckoutCount = $todayAttendances->filter(fn (Attendance $attendance) => !$attendance->checkout_at)->count();
+
+        $pendingLeaves = LeaveRequest::where('status', 'pending')->count();
+        $pendingSupplements = AttendanceSupplementRequest::where('status', 'pending')->count();
+        $noFaceCount = (clone $usersQuery)
+            ->where(function ($query) {
+                $query->whereNull('face_descriptor')
+                    ->orWhere('face_descriptor', '');
+            })
+            ->count();
+        $ratingDashboard = $this->adminRatingDashboardData($today->copy()->startOfMonth(), $today->copy()->endOfMonth());
+
+        return [
+            'ratingDashboard' => $ratingDashboard,
+            'alerts' => [
+                ['label' => 'Thiếu checkout hôm nay', 'value' => $missingCheckoutCount . ' nhân viên', 'route' => 'attendance-reports.index'],
+                ['label' => 'Chưa đăng ký gương mặt', 'value' => $noFaceCount . ' nhân viên', 'route' => 'users.index'],
+            ],
+            'pending' => [
+                ['label' => 'Đơn xin OFF', 'value' => $pendingLeaves . ' đơn', 'route' => 'leave-requests.index'],
+                ['label' => 'Bổ sung công', 'value' => $pendingSupplements . ' đơn', 'route' => 'attendance-supplements.index'],
+            ],
+            'quickLinks' => [
+                ['label' => 'Nhân sự', 'route' => 'users.index', 'icon' => 'users'],
+                ['label' => 'QR chấm công', 'route' => 'qr.show', 'icon' => 'qr'],
+                ['label' => 'Báo cáo công', 'route' => 'attendance-reports.index', 'icon' => 'report'],
+                ['label' => 'Thống kê công', 'route' => 'attendance-statistics.index', 'icon' => 'stats'],
+            ],
+            'summary' => [
+                ['label' => 'Tổng nhân sự', 'value' => $totalUsers, 'meta' => '', 'tone' => 'purple'],
+                ['label' => 'Đã check-in', 'value' => $checkedIn, 'meta' => $checkedPercent . '%', 'tone' => 'green'],
+                ['label' => 'Chưa check-in', 'value' => $notChecked, 'meta' => $notCheckedPercent . '%', 'tone' => 'red'],
+                ['label' => 'Đi trễ', 'value' => $lateCount, 'meta' => '', 'tone' => 'yellow'],
+                ['label' => 'Nghỉ phép', 'value' => $leaveCount, 'meta' => '', 'tone' => 'indigo'],
+                ['label' => 'Thiếu check-out', 'value' => $missingCheckoutCount, 'meta' => '', 'tone' => 'orange'],
+            ],
+        ];
+    }
+
+    private function adminRatingDashboardData(Carbon $start, Carbon $end): array
+    {
+        $ratingQuery = CustomerRating::with(['employee.branch', 'branch', 'reward'])
+            ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+
+        $latestRatings = (clone $ratingQuery)
+            ->latest('submitted_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (CustomerRating $rating) => $this->adminRatingPayload($rating));
+
+        $badFeedback = (clone $ratingQuery)
+            ->where('rating', CustomerRating::RATING_BAD)
+            ->latest('submitted_at')
+            ->limit(10)
+            ->get()
+            ->map(fn (CustomerRating $rating) => $this->adminRatingPayload($rating));
+
+        $branchCounts = (clone $ratingQuery)
+            ->selectRaw('branch_id, rating, count(*) as aggregate')
+            ->groupBy('branch_id', 'rating')
+            ->get()
+            ->groupBy('branch_id');
+
+        $branchPerformance = Branch::query()
+            ->orderBy('name')
+            ->get()
+            ->map(function (Branch $branch) use ($branchCounts) {
+                $counts = $branchCounts->get($branch->id, collect())->pluck('aggregate', 'rating');
+
+                return [
+                    'id' => $branch->id,
+                    'name' => $branch->name,
+                    'good' => (int) ($counts[CustomerRating::RATING_GOOD] ?? 0),
+                    'average' => (int) ($counts[CustomerRating::RATING_AVERAGE] ?? 0),
+                    'bad' => (int) ($counts[CustomerRating::RATING_BAD] ?? 0),
+                ];
+            })
+            ->filter(fn (array $branch) => $branch['good'] + $branch['average'] + $branch['bad'] > 0)
+            ->values()
+            ->take(12);
+
+        $employeePerformance = User::query()
+            ->whereIn('role', ['staff', 'cashier', 'manager'])
+            ->with('branch')
+            ->withCount([
+                'customerRatings as good_ratings_count' => function ($query) use ($start, $end) {
+                    $query->where('rating', CustomerRating::RATING_GOOD)
+                        ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+                },
+                'customerRatings as average_ratings_count' => function ($query) use ($start, $end) {
+                    $query->where('rating', CustomerRating::RATING_AVERAGE)
+                        ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+                },
+                'customerRatings as bad_ratings_count' => function ($query) use ($start, $end) {
+                    $query->where('rating', CustomerRating::RATING_BAD)
+                        ->whereBetween('submitted_at', [$start->copy()->startOfDay(), $end->copy()->endOfDay()]);
+                },
+            ])
+            ->orderByDesc('good_ratings_count')
+            ->orderBy('name')
+            ->limit(12)
+            ->get()
+            ->map(fn (User $employee) => [
+                'id' => $employee->id,
+                'name' => $employee->name,
+                'branch_name' => $employee->branch?->name ?? 'Chua co chi nhanh',
+                'role' => $employee->role,
+                'good' => (int) $employee->good_ratings_count,
+                'average' => (int) $employee->average_ratings_count,
+                'bad' => (int) $employee->bad_ratings_count,
+                'total' => (int) $employee->good_ratings_count + (int) $employee->average_ratings_count + (int) $employee->bad_ratings_count,
+            ])
+            ->filter(fn (array $employee) => $employee['total'] > 0)
+            ->values();
+
+        $rewardStatusCounts = CustomerRatingReward::query()
+            ->whereBetween('business_date', [$start->toDateString(), $end->toDateString()])
+            ->selectRaw('status, count(*) as aggregate, coalesce(sum(amount), 0) as total_amount')
+            ->groupBy('status')
+            ->get();
+
+        $rewardTotalAmount = (int) $rewardStatusCounts->sum('total_amount');
+        $rewardStatuses = $rewardStatusCounts
+            ->map(fn ($reward) => [
+                'status' => $reward->status,
+                'status_label' => CustomerRatingReceivedNotification::rewardStatusLabel($reward->status, null),
+                'count' => (int) $reward->aggregate,
+                'amount_label' => number_format((int) $reward->total_amount, 0, ',', '.') . 'đ',
+            ])
+            ->values();
+
+        $qrUsers = User::query()
+            ->whereIn('role', ['staff', 'cashier', 'manager'])
+            ->with('branch')
+            ->orderBy('name')
+            ->limit(15)
+            ->get();
+
+        return [
+            'latest' => $latestRatings,
+            'bad_feedback' => $badFeedback,
+            'branch_performance' => $branchPerformance,
+            'employee_performance' => $employeePerformance,
+            'reward_total_amount_label' => number_format($rewardTotalAmount, 0, ',', '.') . 'đ',
+            'reward_statuses' => $rewardStatuses,
+            'qr_users' => $qrUsers,
+            'month_label' => $start->format('m/Y'),
+        ];
+    }
+
+    private function adminRatingPayload(CustomerRating $rating): array
+    {
+        return [
+            'id' => $rating->id,
+            'employee_name' => $rating->employee?->name ?? 'Nhan su',
+            'branch_name' => $rating->branch?->name ?? $rating->employee?->branch?->name ?? 'Chua co chi nhanh',
+            'rating' => $rating->rating,
+            'rating_label' => $this->ratingLabel($rating->rating),
+            'rating_tone' => $this->ratingTone($rating->rating),
+            'comment' => $rating->comment,
+            'submitted_at' => $rating->submitted_at?->format('H:i d/m/Y'),
+            'reward_status_label' => CustomerRatingReceivedNotification::rewardStatusLabel(
+                $rating->reward?->status,
+                $rating->reward?->reason_code
+            ),
+        ];
+    }
+
+    private function employeeDayCell(
+        Carbon $day,
+        ?Attendance $attendance,
+        ?ShiftAssignment $assignment,
+        ?LeaveRequest $leave,
+        ?AttendanceSupplementRequest $supplement = null
+    ): array
+    {
+        $shift = $attendance?->shift ?? $assignment?->shift;
+        $checkout = $attendance?->checkout_at;
+        $overtimeHours = round((int) ($attendance?->overtime_minutes ?? 0) / 60, 1);
+        $display = app(AttendanceStatusService::class)->resolveDailyStatus(
+            user: auth()->user(),
+            workDate: $day,
+            attendance: $attendance,
+            assignment: $assignment,
+            leave: $leave,
+            supplement: $supplement
+        );
+
+        return [
+            'status' => $display['key'],
+            'status_key' => $display['key'],
+            'label' => $display['label'],
+            'subtitle' => $display['subtitle'],
+            'classes' => $display['classes'],
+            'color' => $display['color'],
+            'icon' => $display['icon'],
+            'badges' => $display['badges'],
+            'shift' => $shift?->name,
+            'time' => $shift ? $this->shiftTimeText($shift, $day) : '--',
+            'segments' => $shift ? $this->shiftSegmentItems($shift, $day, $attendance) : [],
+            'checkin' => $attendance?->checkin_at?->format('H:i'),
+            'checkout' => $attendance?->checkout_at?->format('H:i'),
+            'late_minutes' => (int) ($attendance?->late_minutes ?? 0),
+            'work_status' => $display['work_status'],
+            'work_label' => $display['work_label'],
+            'overtime_hours' => $overtimeHours,
+            'note' => $display['subtitle'],
+        ];
+
+        if ($day->isAfter(today())) {
+            return [
+                'status' => 'future',
+                'label' => 'Sắp đến',
+                'shift' => $shift?->name,
+                'time' => $shift ? $this->shiftTimeText($shift, $day) : '--',
+                'checkin' => null,
+                'checkout' => null,
+                'late_minutes' => 0,
+                'work_status' => 'future',
+                'work_label' => 'Sắp đến',
+                'overtime_hours' => 0,
+                'note' => null,
+            ];
+        }
+
+        if ($leave) {
+            return [
+                'status' => 'off',
+                'label' => 'Nghỉ phép',
+                'shift' => $shift?->name,
+                'time' => $shift ? $this->shiftTimeText($shift, $day) : '--',
+                'checkin' => null,
+                'checkout' => null,
+                'late_minutes' => 0,
+                'work_status' => 'off',
+                'work_label' => 'Nghỉ phép',
+                'overtime_hours' => 0,
+                'note' => $leave->reason,
+            ];
+        }
+
+        if (!$attendance && !$assignment) {
+            return [
+                'status' => 'none',
+                'label' => 'Chưa chấm công',
+                'shift' => null,
+                'time' => '--',
+                'checkin' => null,
+                'checkout' => null,
+                'late_minutes' => 0,
+                'work_status' => 'none',
+                'work_label' => 'Chưa chấm công',
+                'overtime_hours' => 0,
+                'note' => null,
+            ];
+        }
+
+        if (!$attendance && $assignment) {
+            return [
+                'status' => 'none',
+                'label' => 'Chưa chấm công',
+                'shift' => $shift?->name,
+                'time' => $shift ? $this->shiftTimeText($shift, $day) : '--',
+                'checkin' => null,
+                'checkout' => null,
+                'late_minutes' => 0,
+                'work_status' => 'absent',
+                'work_label' => 'Chưa chấm công',
+                'overtime_hours' => 0,
+                'note' => 'Có ca nhưng chưa có dữ liệu chấm công',
+            ];
+        }
+
+        $workedMinutes = $checkout ? $attendance->checkin_at->diffInMinutes($checkout) : 0;
+        $requiredMinutes = $shift ? $this->shiftRequiredMinutes($shift, $day) : 480;
+        $lateMinutes = (int) ($attendance->late_minutes ?? 0);
+        $isEarlyCheckout = false;
+
+        if ($shift && $attendance->checkin_at) {
+            $allowedLateTime = $this->shiftDateTimeFor($shift, $day, 'start_at')
+                ->addMinutes((int) ($shift->late_after_minutes ?? 0));
+
+            if ($attendance->checkin_at->greaterThan($allowedLateTime)) {
+                $lateMinutes = $allowedLateTime->diffInMinutes($attendance->checkin_at);
+            }
+
+            if ($checkout) {
+                $shiftEnd = $this->shiftDateTimeFor($shift, $day, 'end_at');
+                $isEarlyCheckout = $checkout->lessThan($shiftEnd);
+            }
+        }
+
+        $finalWorkDay = $attendance->work_day;
+        $isFullWork = $finalWorkDay !== null
+            ? (float) $finalWorkDay >= 1
+            : $workedMinutes >= $requiredMinutes;
+        $display = $this->employeeAttendanceDisplayStatus(
+            attendance: $attendance,
+            checkout: $checkout,
+            isFullWork: $isFullWork,
+            lateMinutes: $lateMinutes,
+            isEarlyCheckout: $isEarlyCheckout,
+            hasApprovedSupplement: (bool) $supplement
+        );
+
+        return [
+            'status' => $display['status'],
+            'label' => $display['label'],
+            'shift' => $shift?->name,
+            'time' => $shift ? $this->shiftTimeText($shift, $day) : '--',
+            'checkin' => $attendance->checkin_at?->format('H:i'),
+            'checkout' => $attendance->checkout_at?->format('H:i'),
+            'late_minutes' => $lateMinutes,
+            'work_status' => $display['work_status'],
+            'work_label' => $display['work_label'],
+            'overtime_hours' => $overtimeHours,
+            'note' => $display['note'] ?? $attendance->note,
+        ];
+    }
+
+    private function employeeAttendanceDisplayStatus(
+        Attendance $attendance,
+        ?Carbon $checkout,
+        bool $isFullWork,
+        int $lateMinutes,
+        bool $isEarlyCheckout,
+        bool $hasApprovedSupplement
+    ): array {
+        if (!$checkout) {
+            $isStillActive = $this->isOpenAttendanceStillActive($attendance);
+
+            return [
+                'status' => 'missing',
+                'label' => 'Thiếu checkout',
+                'work_status' => 'missing',
+                'work_label' => $isStillActive ? 'Đang làm' : 'Thiếu checkout',
+                'note' => $isStillActive ? 'Đã checkin, chưa checkout.' : 'Có checkin nhưng thiếu checkout.',
+            ];
+        }
+
+        if ($hasApprovedSupplement) {
+            return [
+                'status' => 'approved',
+                'label' => 'Đã duyệt đơn',
+                'work_status' => $isFullWork ? 'complete' : 'missing',
+                'work_label' => $isFullWork ? 'Đã duyệt đơn, đủ công' : 'Đã duyệt đơn',
+                'note' => 'Có đơn bổ sung công đã được duyệt.',
+            ];
+        }
+
+        if ($lateMinutes > 0) {
+            return [
+                'status' => 'late',
+                'label' => 'Đi trễ',
+                'work_status' => $isFullWork ? 'complete' : 'missing',
+                'work_label' => $isFullWork ? 'Đã đủ công nhưng vào trễ' : 'Đi trễ, thiếu công',
+                'note' => $isFullWork ? 'Đã đủ công nhưng vào trễ.' : null,
+            ];
+        }
+
+        if ($isEarlyCheckout) {
+            return [
+                'status' => 'early',
+                'label' => 'Về sớm',
+                'work_status' => $isFullWork ? 'complete' : 'missing',
+                'work_label' => $isFullWork ? 'Về sớm' : 'Về sớm, thiếu công',
+                'note' => null,
+            ];
+        }
+
+        if (!$isFullWork) {
+            return [
+                'status' => 'partial',
+                'label' => 'Thiếu công',
+                'work_status' => 'missing',
+                'work_label' => 'Thiếu công',
+                'note' => null,
+            ];
+        }
+
+        return [
+            'status' => 'complete',
+            'label' => 'Đủ công',
+            'work_status' => 'complete',
+            'work_label' => 'Đủ công / Đúng giờ',
+            'note' => null,
+        ];
+    }
+
+    private function effectiveAssignmentForDay($assignments, Carbon $day): ?ShiftAssignment
+    {
+        $dateAssignment = $assignments
+            ->filter(fn (ShiftAssignment $assignment) => $assignment->work_date?->toDateString() === $day->toDateString())
+            ->sortByDesc('updated_at')
+            ->first();
+
+        if ($dateAssignment) {
+            return $dateAssignment;
+        }
+
+        return $assignments
+            ->filter(fn (ShiftAssignment $assignment) => !$assignment->work_date)
+            ->filter(fn (ShiftAssignment $assignment) => $assignment->created_at->lessThanOrEqualTo($day->copy()->endOfDay()))
+            ->sortByDesc('created_at')
+            ->first();
+    }
+
+    private function shiftTimeText(Shift $shift, Carbon $day): string
+    {
+        $segments = $this->shiftSegmentItems($shift, $day);
+
+        if (count($segments) >= 2) {
+            return sprintf(
+                '%d đoạn · %s - %s',
+                count($segments),
+                $this->shiftDateTimeFor($shift, $day, 'start_at')->format('H:i'),
+                $this->shiftDateTimeFor($shift, $day, 'end_at')->format('H:i')
+            );
+        }
+
+        return sprintf(
+            '%s - %s',
+            $this->shiftDateTimeFor($shift, $day, 'start_at')->format('H:i'),
+            $this->shiftDateTimeFor($shift, $day, 'end_at')->format('H:i')
+        );
+    }
+
+    private function shiftSegmentItems(Shift $shift, Carbon $day, ?Attendance $attendance = null): array
+    {
+        $shift->loadMissing('segments');
+
+        if ($shift->segments->count() < 2) {
+            return [];
+        }
+
+        $attendance?->loadMissing('segments');
+        $actualSegments = $attendance?->segments?->keyBy('segment_order') ?? collect();
+        $now = now();
+
+        return app(ShiftScheduleService::class)
+            ->scheduledSegments($shift, $day)
+            ->map(function (array $segment) use ($actualSegments, $now) {
+                $actual = $actualSegments->get($segment['segment_order']);
+                $status = 'Chưa tới giờ';
+
+                if ($actual?->checkout_at) {
+                    $status = 'Hoàn thành';
+                } elseif ($actual?->checkin_at) {
+                    $status = 'Đang làm';
+                } elseif ($now->betweenIncluded($segment['start_at'], $segment['end_at'])) {
+                    $status = 'Đến giờ chấm công';
+                } elseif ($now->greaterThan($segment['end_at'])) {
+                    $status = 'Chưa chấm công';
+                }
+
+                return [
+                    'order' => (int) $segment['segment_order'],
+                    'start' => $segment['start_at']->format('H:i'),
+                    'end' => $segment['end_at']->format('H:i'),
+                    'status' => $status,
+                    'checkin' => $actual?->checkin_at?->format('H:i'),
+                    'checkout' => $actual?->checkout_at?->format('H:i'),
+                ];
+            })
+            ->values()
+            ->all();
+    }
+
+    private function shiftDateTimeFor(Shift $shift, Carbon $base, string $field): Carbon
+    {
+        $time = Carbon::parse($shift->{$field});
+
+        $dateTime = $base->copy()->setTime(
+            (int) $time->format('H'),
+            (int) $time->format('i'),
+            (int) $time->format('s')
+        );
+
+        if ($field === 'end_at') {
+            $start = Carbon::parse($shift->start_at);
+            $end = Carbon::parse($shift->end_at);
+
+            if ($end->format('H:i:s') <= $start->format('H:i:s')) {
+                $dateTime->addDay();
+            }
+        }
+
+        return $dateTime;
+    }
+
+    private function shiftRequiredMinutes(Shift $shift, Carbon $day): int
+    {
+        return $this->shiftDateTimeFor($shift, $day, 'start_at')
+            ->diffInMinutes($this->shiftDateTimeFor($shift, $day, 'end_at'));
+    }
+
+    private function isOpenAttendanceStillActive(Attendance $attendance): bool
+    {
+        if ($attendance->checkout_at || !$attendance->checkin_at) {
+            return false;
+        }
+
+        if ($attendance->checkin_at->isToday()) {
+            return true;
+        }
+
+        $workDate = $attendance->work_date
+            ? Carbon::parse($attendance->work_date)
+            : $attendance->checkin_at->copy();
+        $cutoff = $this->overnightCutoffTime();
+        $limit = $workDate->copy()
+            ->addDay()
+            ->setTime($cutoff['hour'], $cutoff['minute']);
+
+        return now()->lessThanOrEqualTo($limit);
+    }
+
+    private function overnightCutoffTime(): array
+    {
+        $value = (string) Setting::getValue('overnight_cutoff_time', '08:50');
+
+        if (!preg_match('/^\d{2}:\d{2}$/', $value)) {
+            return ['hour' => 8, 'minute' => 50];
+        }
+
+        [$hour, $minute] = array_map('intval', explode(':', $value));
+
+        if ($hour < 0 || $hour > 23 || $minute < 0 || $minute > 59) {
+            return ['hour' => 8, 'minute' => 50];
+        }
+
+        return ['hour' => $hour, 'minute' => $minute];
+    }
+}

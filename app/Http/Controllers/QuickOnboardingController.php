@@ -1,0 +1,318 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Branch;
+use App\Models\QuickOnboardingBatch;
+use App\Models\QuickOnboardingEntry;
+use App\Services\QuickOnboardingShareService;
+use App\Services\QuickOnboardingService;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
+use Illuminate\Http\Response;
+use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use Illuminate\View\View;
+
+class QuickOnboardingController extends Controller
+{
+    private const CURRENT_BATCH_SESSION_KEY = 'quick_onboarding_current_batch_id';
+    private const SELECTED_BRANCH_SESSION_KEY = 'quick_onboarding_selected_branch_id';
+
+    public function index(Request $request, QuickOnboardingShareService $sharing): View
+    {
+        $batch = $this->currentBatch($request);
+        $user = $request->user();
+        $entries = $batch?->entries()->with(['branch', 'completedUser'])->oldest('id')->get() ?? collect();
+        $branches = $this->branchOptions($request);
+
+        return view('quick_onboarding.index', [
+            'batch' => $batch,
+            'entries' => $entries,
+            'branches' => $branches,
+            'roleOptions' => $this->roleOptions($user),
+            'shareOptions' => $entries->mapWithKeys(fn (QuickOnboardingEntry $entry) => [
+                $entry->id => $sharing->options($entry),
+            ])->all(),
+            'selectedBranchId' => old(
+                'branch_id',
+                $request->session()->get(self::SELECTED_BRANCH_SESSION_KEY, $batch?->branch_id ?? $branches->first()?->id)
+            ),
+        ]);
+    }
+
+    public function store(Request $request, QuickOnboardingService $onboarding): RedirectResponse
+    {
+        $data = $this->validateCreateData($request);
+        $batch = $onboarding->createBatch($request->user(), (int) $data['quantity'], (int) $data['branch_id']);
+
+        $request->session()->put(self::CURRENT_BATCH_SESSION_KEY, $batch->id);
+        $request->session()->put(self::SELECTED_BRANCH_SESSION_KEY, (int) $data['branch_id']);
+
+        return redirect()
+            ->route('quick-onboarding.index')
+            ->with('success', 'Da tao danh sach loi moi moi.');
+    }
+
+    public function addMore(Request $request, QuickOnboardingService $onboarding): RedirectResponse
+    {
+        $data = $this->validateCreateData($request);
+        $batch = $this->currentBatch($request);
+
+        if (!$batch) {
+            $batch = $onboarding->createBatch($request->user(), (int) $data['quantity'], (int) $data['branch_id']);
+        } else {
+            $batch = $onboarding->addToBatch($batch, $request->user(), (int) $data['quantity'], (int) $data['branch_id']);
+        }
+
+        $request->session()->put(self::CURRENT_BATCH_SESSION_KEY, $batch->id);
+        $request->session()->put(self::SELECTED_BRANCH_SESSION_KEY, (int) $data['branch_id']);
+
+        return redirect()
+            ->route('quick-onboarding.index')
+            ->with('success', 'Da tao them loi moi vao danh sach hien tai.');
+    }
+
+    public function bulkUpdate(Request $request, QuickOnboardingService $onboarding): RedirectResponse
+    {
+        $batch = $this->currentBatch($request);
+
+        if (!$batch) {
+            throw ValidationException::withMessages([
+                'entry_ids' => 'Vui long tao danh sach loi moi truoc khi cap nhat hang loat.',
+            ]);
+        }
+
+        $user = $request->user();
+        $allowedBranchIds = $this->branchOptions($request)->pluck('id')->map(fn ($id) => (int) $id)->all();
+        $allowedRoles = array_keys($this->roleOptions($user));
+
+        $data = $request->validate([
+            'entry_ids' => ['required', 'array', 'min:1'],
+            'entry_ids.*' => ['integer', 'distinct'],
+            'branch_id' => ['required', 'integer', Rule::in($allowedBranchIds)],
+            'role' => ['required', 'string', Rule::in($allowedRoles)],
+        ]);
+
+        $entryIds = array_values(array_unique(array_map('intval', $data['entry_ids'])));
+        $matchedCount = $batch->entries()
+            ->whereIn('id', $entryIds)
+            ->count();
+
+        if ($matchedCount !== count($entryIds)) {
+            throw ValidationException::withMessages([
+                'entry_ids' => 'Danh sach loi moi da chon khong hop le hoac khong thuoc quyen cua ban.',
+            ]);
+        }
+
+        $updated = $onboarding->bulkUpdateEntries(
+            batch: $batch,
+            actor: $user,
+            entryIds: $entryIds,
+            branchId: (int) $data['branch_id'],
+            role: $data['role']
+        );
+
+        return redirect()
+            ->route('quick-onboarding.index')
+            ->with('success', 'Da cap nhat ' . $updated . ' loi moi da chon.');
+    }
+
+    public function qr(QuickOnboardingEntry $entry, QuickOnboardingService $onboarding, QuickOnboardingShareService $sharing): Response
+    {
+        if (!$onboarding->canAccessEntry(auth()->user(), $entry)) {
+            abort(403);
+        }
+
+        return response($sharing->qrSvg($entry), 200, [
+            'Content-Type' => 'image/svg+xml',
+            'Content-Disposition' => 'attachment; filename="quick-onboarding-' . $entry->id . '.svg"',
+            'Cache-Control' => 'no-store, no-cache, must-revalidate, max-age=0',
+        ]);
+    }
+
+    public function sync(Request $request, QuickOnboardingService $onboarding): JsonResponse
+    {
+        $batch = $this->currentBatch($request);
+
+        if (!$batch) {
+            return response()->json(['entries' => []])
+                ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+        }
+
+        $entries = $batch->entries()
+            ->with(['branch', 'completedUser'])
+            ->oldest('id')
+            ->get()
+            ->map(fn (QuickOnboardingEntry $entry) => $onboarding->syncPayload($entry))
+            ->values();
+
+        return response()->json(['entries' => $entries])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function markSent(Request $request, QuickOnboardingEntry $entry, QuickOnboardingService $onboarding): JsonResponse
+    {
+        $batch = $this->currentBatch($request);
+
+        if (!$batch || (int) $entry->quick_onboarding_batch_id !== (int) $batch->id) {
+            abort(403);
+        }
+
+        $entry = $onboarding->markEntryAsSent($entry, $request->user());
+
+        return response()->json($onboarding->syncPayload($entry))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function expectedName(Request $request, QuickOnboardingEntry $entry, QuickOnboardingService $onboarding): JsonResponse
+    {
+        $batch = $this->currentBatch($request);
+
+        if (!$batch || (int) $entry->quick_onboarding_batch_id !== (int) $batch->id) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'expected_name' => ['nullable', 'string', 'max:255'],
+        ]);
+
+        $entry = $onboarding->updateExpectedName(
+            $entry,
+            $request->user(),
+            trim((string) ($data['expected_name'] ?? ''))
+        );
+
+        return response()->json($onboarding->syncPayload($entry))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function role(Request $request, QuickOnboardingEntry $entry, QuickOnboardingService $onboarding): JsonResponse
+    {
+        $batch = $this->currentBatch($request);
+
+        if (!$batch || (int) $entry->quick_onboarding_batch_id !== (int) $batch->id) {
+            abort(403);
+        }
+
+        $allowedRoles = array_keys($this->roleOptions($request->user()));
+
+        $data = $request->validate([
+            'role' => ['required', 'string', Rule::in($allowedRoles)],
+        ]);
+
+        $entry = $onboarding->updateEntryRole($entry, $request->user(), $data['role']);
+
+        return response()->json($onboarding->syncPayload($entry))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function avatar(Request $request, QuickOnboardingEntry $entry, QuickOnboardingService $onboarding): JsonResponse
+    {
+        $batch = $this->currentBatch($request);
+
+        if (!$batch || (int) $entry->quick_onboarding_batch_id !== (int) $batch->id) {
+            abort(403);
+        }
+
+        $data = $request->validate([
+            'avatar' => ['required', 'image', 'max:5120'],
+        ]);
+
+        $entry = $onboarding->updateEntryAvatar($entry, $request->user(), $data['avatar']);
+
+        return response()->json($onboarding->syncPayload($entry))
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    public function destroyEntry(Request $request, QuickOnboardingEntry $entry, QuickOnboardingService $onboarding): JsonResponse
+    {
+        $batch = $this->currentBatch($request);
+
+        if (!$batch || (int) $entry->quick_onboarding_batch_id !== (int) $batch->id) {
+            abort(403);
+        }
+
+        $onboarding->deleteEntry($entry, $request->user());
+
+        return response()->json(['ok' => true, 'id' => $entry->id])
+            ->header('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
+    }
+
+    private function validateCreateData(Request $request): array
+    {
+        $allowedBranchIds = $this->branchOptions($request)->pluck('id')->map(fn ($id) => (int) $id)->all();
+
+        return $request->validate([
+            'quantity' => ['required', 'integer', 'min:1', 'max:1000'],
+            'branch_id' => ['required', 'integer', Rule::in($allowedBranchIds)],
+        ]);
+    }
+
+    private function branchOptions(Request $request)
+    {
+        $user = $request->user();
+
+        return Branch::active()
+            ->when($user->role === 'manager', fn ($query) => $query->whereKey($user->branch_id))
+            ->orderBy('name')
+            ->get();
+    }
+
+    private function roleOptions($user): array
+    {
+        if ($user->role === 'admin') {
+            return [
+                'manager' => 'Quan ly',
+                'staff' => 'Nhan vien',
+                'cashier' => 'Thu ngan',
+            ];
+        }
+
+        return [
+            'staff' => 'Nhan vien',
+            'cashier' => 'Thu ngan',
+        ];
+    }
+
+    private function currentBatch(Request $request): ?QuickOnboardingBatch
+    {
+        $batchId = $request->session()->get(self::CURRENT_BATCH_SESSION_KEY);
+
+        if ($batchId) {
+            $batch = QuickOnboardingBatch::with('branch')
+                ->whereKey($batchId)
+                ->first();
+
+            if ($batch && app(QuickOnboardingService::class)->canAccessBatch($request->user(), $batch)) {
+                return $batch;
+            }
+
+            $request->session()->forget(self::CURRENT_BATCH_SESSION_KEY);
+        }
+
+        $batch = $this->latestAccessibleBatch($request);
+
+        if ($batch) {
+            $request->session()->put(self::CURRENT_BATCH_SESSION_KEY, $batch->id);
+            $request->session()->put(self::SELECTED_BRANCH_SESSION_KEY, $batch->branch_id);
+        }
+
+        return $batch;
+    }
+
+    private function latestAccessibleBatch(Request $request): ?QuickOnboardingBatch
+    {
+        $user = $request->user();
+
+        return QuickOnboardingBatch::with('branch')
+            ->when($user->role === 'manager', function ($query) use ($user) {
+                $query->where('created_by', $user->id)
+                    ->where('branch_id', $user->branch_id);
+            })
+            ->when(!in_array($user->role, ['admin', 'manager'], true), fn ($query) => $query->whereRaw('1 = 0'))
+            ->latest('id')
+            ->first();
+    }
+}

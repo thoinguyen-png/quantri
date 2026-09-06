@@ -1,0 +1,292 @@
+<x-app-layout>
+    @php
+        $monthDate = \Carbon\Carbon::createFromFormat('Y-m', $month);
+        $previousMonth = $monthDate->copy()->subMonth()->format('Y-m');
+        $nextMonth = $monthDate->copy()->addMonth()->format('Y-m');
+        $weekdays = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
+        $weekdayNames = [
+            1 => 'Thu Hai',
+            2 => 'Thu Ba',
+            3 => 'Thứ Tư',
+            4 => 'Thu Nam',
+            5 => 'Thu Sau',
+            6 => 'Thu Bay',
+            7 => 'Chu Nhat',
+        ];
+        $monthLabel = 'Thang ' . $monthDate->format('m/Y');
+        $summaryCards = [
+            ['label' => 'Đủ công', 'value' => $summary['complete'], 'meta' => 'ngày', 'status' => 'full_day'],
+            ['label' => 'Thiếu công', 'value' => $summary['missing'], 'meta' => 'ngày', 'status' => 'insufficient_work'],
+            ['label' => 'Nghỉ có phép', 'value' => $summary['off'], 'meta' => 'ngày', 'status' => 'leave_approved'],
+            ['label' => 'Nghỉ không phép', 'value' => $summary['absent'], 'meta' => 'ngày', 'status' => 'absent_without_leave'],
+            ['label' => 'Tăng ca', 'value' => round($summary['overtime'], 1), 'meta' => 'giờ', 'status' => 'overtime'],
+        ];
+    @endphp
+
+    <div class="home-page home-page--employee">
+        <section class="home-brand-bar" aria-label="Maxsim">
+            <img src="{{ asset('icons/logoMaxSim.png') }}" alt="Maxsim">
+        </section>
+
+        <section class="home-topline">
+            <div>
+                Xin chao, <strong>{{ $user->name }}</strong>
+            </div>
+            <a href="{{ route('users.me') }}" class="home-profile-button" aria-label="Tài khoản">
+                <span>{{ strtoupper(mb_substr($user->name, 0, 1)) }}</span>
+            </a>
+        </section>
+<!-- 
+        <section class="home-tabs">
+                <a href="{{ route('attendance.dashboard', ['month' => $month]) }}" class="home-tab is-active">Bảng chấm công</a>
+            <a href="{{ route('attendance-supplements.index') }}" class="home-tab">Thông báo</a>
+        </section> -->
+
+        @if ($managerRatingDashboard)
+            @include('dashboard.partials.manager-rating-dashboard')
+        @endif
+
+        <section class="home-calendar-card">
+            <div class="home-month-nav">
+                <a href="{{ route('attendance.dashboard', ['month' => $previousMonth]) }}" aria-label="Thang truoc">‹</a>
+                <strong>{{ $monthLabel }}</strong>
+                <a href="{{ route('attendance.dashboard', ['month' => $nextMonth]) }}" aria-label="Thang sau">›</a>
+            </div>
+
+            <h1>Bảng Công - {{ $monthLabel }}</h1>
+
+            <div class="home-status-legend">
+                @foreach ($summaryCards as $card)
+                    <div class="home-status-pill home-status-pill--{{ $card['status'] }}">
+                        <span>{{ $card['label'] }}</span>
+                        <strong>{{ $card['value'] }} {{ $card['meta'] }}</strong>
+                    </div>
+                @endforeach
+            </div>
+
+            <div class="home-calendar">
+                @foreach ($weekdays as $weekday)
+                    <div class="home-weekday">{{ $weekday }}</div>
+                @endforeach
+
+                @for ($i = 0; $i < $calendarLeadingDays; $i++)
+                    <div class="home-day home-day--blank"></div>
+                @endfor
+
+                @foreach ($days as $day)
+                    @php
+                        $dateKey = $day->toDateString();
+                        $cell = $cells[$dateKey];
+                    @endphp
+
+                    <button
+                        type="button"
+                        class="home-day home-day--{{ $cell['status'] }} {{ $day->isToday() ? 'is-today' : '' }}"
+                        data-day-trigger
+                        data-day-status="{{ $cell['status'] }}"
+                        data-day-date="{{ $day->format('d/m/Y') }}"
+                        data-day-weekday="{{ $weekdayNames[$day->dayOfWeekIso] }}"
+                        data-day-label="{{ $cell['label'] }}"
+                        data-day-shift="{{ $cell['shift'] ?? 'Không có ca' }}"
+                        data-day-time="{{ $cell['time'] }}"
+                        data-day-checkin="{{ $cell['checkin'] ?? '--:--' }}"
+                        data-day-checkout="{{ $cell['checkout'] ?? '--:--' }}"
+                        data-day-work-label="{{ $cell['work_label'] ?? $cell['label'] }}"
+                        data-day-overtime="{{ $cell['overtime_hours'] }}"
+                        data-day-note="{{ $cell['note'] ?? '' }}"
+                        data-day-badges="{{ implode('|', $cell['badges'] ?? []) }}"
+                        data-day-segments='@json($cell['segments'] ?? [])'
+                    >
+                        <span>{{ $day->day }}</span>
+                        <small>{{ $cell['checkin'] ? $cell['checkin'] : '-' }}</small>
+                    </button>
+                @endforeach
+            </div>
+        </section>
+
+        <div class="home-day-modal" data-day-modal aria-hidden="true">
+            <button class="home-day-modal__backdrop" type="button" data-day-modal-close aria-label="Dong"></button>
+            <section class="home-day-modal__panel" role="dialog" aria-modal="true" aria-labelledby="day-modal-title">
+                <div class="home-day-modal__handle" aria-hidden="true"></div>
+                <div class="home-day-modal__head">
+                    <div>
+                        <span data-modal-weekday>--</span>
+                        <h2 id="day-modal-title" data-modal-date>--</h2>
+                    </div>
+                    <strong data-modal-label>--</strong>
+                </div>
+
+                <div class="home-day-modal__grid">
+                    <div><span>Ca làm</span><strong data-modal-shift>--</strong></div>
+                    <div><span>Giờ ca</span><strong data-modal-time>--</strong></div>
+                    <div><span>Giờ vào</span><strong data-modal-checkin>--</strong></div>
+                    <div><span>Giờ ra</span><strong data-modal-checkout>--</strong></div>
+                    <div><span>Công</span><strong data-modal-work-label>--</strong></div>
+                    <div><span>Tăng ca</span><strong class="home-day-modal__hours"><span data-modal-overtime>0</span>h</strong></div>
+                </div>
+
+                <p class="home-day-modal__note" data-modal-note></p>
+                <div class="home-day-modal__badges" data-modal-segments></div>
+                <div class="home-day-modal__badges" data-modal-badges></div>
+
+                <button class="home-day-modal__close" type="button" data-day-modal-close>
+                    Dong
+                </button>
+            </section>
+        </div>
+
+    </div>
+
+    <script>
+        (function () {
+            const modal = document.querySelector('[data-manager-rating-modal]');
+
+            if (!modal) {
+                return;
+            }
+
+            const listView = modal.querySelector('[data-manager-list-view]');
+            const detailView = modal.querySelector('[data-manager-detail-view]');
+            const fields = {
+                title: modal.querySelector('[data-manager-detail-title]'),
+                employee: modal.querySelector('[data-manager-detail-employee]'),
+                rating: modal.querySelector('[data-manager-detail-rating]'),
+                time: modal.querySelector('[data-manager-detail-time]'),
+                reward: modal.querySelector('[data-manager-detail-reward]'),
+                comment: modal.querySelector('[data-manager-detail-comment]'),
+            };
+
+            function openList() {
+                listView.hidden = false;
+                detailView.hidden = true;
+                modal.hidden = false;
+            }
+
+            function openDetail(payload) {
+                listView.hidden = true;
+                detailView.hidden = false;
+                fields.title.textContent = payload.rating_label || 'Phản hồi';
+                fields.employee.textContent = payload.employee_name || '--';
+                fields.rating.textContent = payload.rating_label || '--';
+                fields.time.textContent = payload.submitted_at || '--';
+                fields.reward.textContent = payload.reward_status_label || 'Không áp dụng';
+                fields.comment.textContent = payload.comment || 'Không có lời nhắn.';
+                modal.hidden = false;
+            }
+
+            function closeModal() {
+                modal.hidden = true;
+            }
+
+            document.querySelectorAll('[data-manager-list-open]').forEach(function (button) {
+                button.addEventListener('click', openList);
+            });
+
+            document.querySelectorAll('[data-manager-feedback]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    try {
+                        openDetail(JSON.parse(button.dataset.managerFeedback || '{}'));
+                    } catch (error) {
+                        openDetail({});
+                    }
+                });
+            });
+
+            modal.querySelectorAll('[data-manager-modal-close]').forEach(function (button) {
+                button.addEventListener('click', closeModal);
+            });
+
+            modal.querySelectorAll('[data-manager-list-back]').forEach(function (button) {
+                button.addEventListener('click', openList);
+            });
+        })();
+
+
+        (function () {
+            const modal = document.querySelector('[data-day-modal]');
+
+            if (!modal) {
+                return;
+            }
+
+            const fields = {
+                weekday: modal.querySelector('[data-modal-weekday]'),
+                date: modal.querySelector('[data-modal-date]'),
+                label: modal.querySelector('[data-modal-label]'),
+                shift: modal.querySelector('[data-modal-shift]'),
+                time: modal.querySelector('[data-modal-time]'),
+                checkin: modal.querySelector('[data-modal-checkin]'),
+                checkout: modal.querySelector('[data-modal-checkout]'),
+                workLabel: modal.querySelector('[data-modal-work-label]'),
+                overtime: modal.querySelector('[data-modal-overtime]'),
+                note: modal.querySelector('[data-modal-note]'),
+                segments: modal.querySelector('[data-modal-segments]'),
+                badges: modal.querySelector('[data-modal-badges]'),
+            };
+
+            function openModal(button) {
+                fields.weekday.textContent = button.dataset.dayWeekday;
+                fields.date.textContent = button.dataset.dayDate;
+                fields.label.textContent = button.dataset.dayLabel;
+                fields.shift.textContent = button.dataset.dayShift;
+                fields.time.textContent = button.dataset.dayTime;
+                fields.checkin.textContent = button.dataset.dayCheckin;
+                fields.checkout.textContent = button.dataset.dayCheckout;
+                fields.workLabel.textContent = button.dataset.dayWorkLabel || button.dataset.dayLabel;
+                fields.overtime.textContent = button.dataset.dayOvertime || 0;
+                fields.note.textContent = button.dataset.dayNote || 'Không có ghi chú.';
+                let segments = [];
+                try {
+                    segments = JSON.parse(button.dataset.daySegments || '[]');
+                } catch (error) {
+                    segments = [];
+                }
+                fields.segments.innerHTML = segments.length
+                    ? '<div class="home-segment-grid">' + segments.map(function (segment) {
+                        const checkinValue = segment.checkin || segment.start;
+                        const checkoutValue = segment.checkout || segment.end;
+
+                        return '<div class="home-segment-card"><span>Đoạn ' + segment.order + ' · Vào</span><strong>' + checkinValue + '</strong><small>' + segment.status + '</small></div>'
+                            + '<div class="home-segment-card"><span>Đoạn ' + segment.order + ' · Ra</span><strong>' + checkoutValue + '</strong><small>' + segment.status + '</small></div>';
+                    }).join('') + '</div>'
+                    : '';
+                const badges = (button.dataset.dayBadges || '').split('|').filter(Boolean);
+                fields.badges.innerHTML = badges.map(function (badge) {
+                    const escaped = badge.replace(/[&<>"']/g, function (char) {
+                        return {
+                            '&': '&amp;',
+                            '<': '&lt;',
+                            '>': '&gt;',
+                            '"': '&quot;',
+                            "'": '&#039;'
+                        }[char];
+                    });
+                    const isOvertime = escaped.toLowerCase().includes('tăng ca');
+                    const className = isOvertime
+                        ? 'home-day-modal__badge home-day-modal__badge--overtime'
+                        : 'home-day-modal__badge';
+
+                    return '<span class="' + className + '">' + escaped + '</span>';
+                }).join('');
+                modal.dataset.status = button.dataset.dayStatus || 'none';
+                modal.classList.add('is-open');
+                modal.setAttribute('aria-hidden', 'false');
+            }
+
+            function closeModal() {
+                modal.classList.remove('is-open');
+                modal.setAttribute('aria-hidden', 'true');
+            }
+
+            document.querySelectorAll('[data-day-trigger]').forEach(function (button) {
+                button.addEventListener('click', function () {
+                    openModal(button);
+                });
+            });
+
+            modal.querySelectorAll('[data-day-modal-close]').forEach(function (button) {
+                button.addEventListener('click', closeModal);
+            });
+        })();
+    </script>
+</x-app-layout>

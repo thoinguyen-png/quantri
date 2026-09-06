@@ -1,0 +1,291 @@
+﻿            if (ratio > FACE_TURN_RATIO) {
+                direction = 'right';
+            }
+
+            if (ratio < -FACE_TURN_RATIO) {
+                direction = 'left';
+            }
+
+            // Preview camera trÆ°á»›c Ä‘ang mirror Ä‘á»ƒ ngÆ°á»i dÃ¹ng tháº¥y tá»± nhiÃªn.
+            // Face-api Ä‘á»c áº£nh gá»‘c, nÃªn cáº§n Ä‘áº£o trÃ¡i/pháº£i cho Ä‘Ãºng vá»›i hÆ°á»›ng dáº«n trÃªn UI.
+            if (faceCameraMode === 'user') {
+                if (direction === 'left') {
+                    return 'right';
+                }
+
+                if (direction === 'right') {
+                    return 'left';
+                }
+            }
+
+            return direction;
+        }
+
+        function resetPriorityFaceProgress() {
+            priorityFaceStartedAt = null;
+            priorityBestDistance = null;
+        }
+
+        function priorityFaceInFrame(detection) {
+            const box = detection.detection.box;
+            const videoWidth = video.videoWidth || video.clientWidth || 1;
+            const videoHeight = video.videoHeight || video.clientHeight || 1;
+            const marginX = videoWidth * 0.08;
+            const marginY = videoHeight * 0.08;
+            const centerX = box.x + (box.width / 2);
+            const centerY = box.y + (box.height / 2);
+            const minFaceWidth = videoWidth * 0.18;
+            const minFaceHeight = videoHeight * 0.18;
+
+            return centerX >= marginX &&
+                centerX <= videoWidth - marginX &&
+                centerY >= marginY &&
+                centerY <= videoHeight - marginY &&
+                box.width >= minFaceWidth &&
+                box.height >= minFaceHeight;
+        }
+
+        function priorityFaceClearEnough(detection) {
+            return (detection.detection.score || 0) >= PRIORITY_FACE_MIN_SCORE;
+        }
+
+        async function completeFaceVerification(distance, runId) {
+            submitted = true;
+
+            statusBox.className = 'p-3 rounded-2xl bg-green-100 text-green-700 text-sm';
+            statusBox.innerText = 'XÃ¡c minh thÃ nh cÃ´ng. Äang láº¥y GPS...';
+
+            try {
+                await markFaceVerified(distance);
+                document.getElementById('face_verified').value = '1';
+            } catch (error) {
+                console.error(error);
+                submitted = false;
+                statusBox.className = 'p-3 rounded-2xl bg-red-100 text-red-700 text-sm';
+                statusBox.innerText = 'KhÃ´ng thá»ƒ ghi nháº­n phiÃªn xÃ¡c minh khuÃ´n máº·t.';
+                setTimeout(() => checkLivenessAndFace(runId), 1000);
+                return;
+            }
+
+            stopFaceCameraTracks();
+            getGpsAndSubmit();
+        }
+
+        async function handlePriorityFaceVerification(detection, distance, runId) {
+            if (!priorityFaceInFrame(detection)) {
+                resetPriorityFaceProgress();
+                statusBox.className = 'p-3 rounded-2xl bg-yellow-100 text-yellow-700 text-sm';
+                statusBox.innerText = 'Giá»¯ khuÃ´n máº·t trong khung Ä‘á»ƒ xÃ¡c thá»±c.';
+                setTimeout(() => checkLivenessAndFace(runId), 700);
+                return;
+            }
+
+            if (!priorityFaceClearEnough(detection)) {
+                resetPriorityFaceProgress();
+                statusBox.className = 'p-3 rounded-2xl bg-yellow-100 text-yellow-700 text-sm';
+                statusBox.innerText = 'Vui lÃ²ng nhÃ¬n láº¡i camera vÃ  giá»¯ Ä‘á»§ sÃ¡ng.';
+                setTimeout(() => checkLivenessAndFace(runId), 700);
+                return;
+            }
+
+            const nowMs = Date.now();
+
+            if (!priorityFaceStartedAt) {
+                priorityFaceStartedAt = nowMs;
+                priorityBestDistance = distance;
+            } else {
+                priorityBestDistance = Math.min(priorityBestDistance ?? distance, distance);
+            }
+
+            const elapsed = nowMs - priorityFaceStartedAt;
+            const seconds = Math.min(3, Math.max(1, Math.ceil(elapsed / 1000)));
+
+            statusBox.className = 'p-3 rounded-2xl bg-yellow-100 text-yellow-700 text-sm';
+            statusBox.innerText = `Äang xÃ¡c thá»±c khuÃ´n máº·t... ${seconds}/3s`;
+
+            if (elapsed >= PRIORITY_FACE_HOLD_MS) {
+                await completeFaceVerification(priorityBestDistance ?? distance, runId);
+                return;
+            }
+
+            setTimeout(() => checkLivenessAndFace(runId), 350);
+        }
+
+        function getSavedDescriptor() {
+            const savedRaw = document.getElementById('saved_descriptor').value;
+
+            if (!savedRaw || savedRaw === 'null') {
+                return null;
+            }
+
+            try {
+                const parsed = JSON.parse(savedRaw);
+                const descriptor = typeof parsed === 'string' ? JSON.parse(parsed) : parsed;
+
+                if (!Array.isArray(descriptor) || descriptor.length < 128) {
+                    return null;
+                }
+
+                return new Float32Array(descriptor);
+            } catch (error) {
+                faceCameraDebug('warn', '[Face verify] invalid saved descriptor', error);
+                return null;
+            }
+        }
+
+        async function markFaceVerified(distance) {
+            const token = document.querySelector('#attendance-form input[name="_token"]').value;
+
+            const response = await fetch(@json(route('face.verify-pass', absolute: false)), {
+                method: 'POST',
+                credentials: 'same-origin',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json',
+                    'X-CSRF-TOKEN': token,
+                },
+                body: JSON.stringify({
+                    distance: distance,
+                }),
+            });
+
+            if (!response.ok) {
+                throw new Error('KhÃ´ng thá»ƒ ghi nháº­n phiÃªn xÃ¡c minh khuÃ´n máº·t.');
+            }
+        }
+
+        async function checkLivenessAndFace(runId) {
+            if (submitted || runId !== faceCheckRunId) return;
+
+            const savedDescriptor = getSavedDescriptor();
+
+            if (!savedDescriptor) {
+                showFaceRequiredPopup();
+                return;
+            }
+
+            const detections = await faceapi
+                .detectAllFaces(
+                    video,
+                    new faceapi.TinyFaceDetectorOptions({
+                        inputSize: 224,
+                        scoreThreshold: 0.4
+                    })
+                )
+                .withFaceLandmarks()
+                .withFaceDescriptors();
+
+            if (runId !== faceCheckRunId) return;
+
+            if (!detections.length) {
+                resetPriorityFaceProgress();
+                statusBox.className = 'p-3 rounded-2xl bg-yellow-100 text-yellow-700 text-sm';
+                statusBox.innerText = 'KhÃ´ng tÃ¬m tháº¥y khuÃ´n máº·t';
+                setTimeout(() => checkLivenessAndFace(runId), 700);
+                return;
+            }
+
+            if (detections.length > 1) {
+                resetPriorityFaceProgress();
+                step = 'center';
+                document.getElementById('face_verified').value = '0';
+                statusBox.className = 'p-3 rounded-2xl bg-red-100 text-red-700 text-sm';
+                statusBox.innerText = 'Chá»‰ Ä‘Æ°á»£c cÃ³ 1 khuÃ´n máº·t trong khung hÃ¬nh';
+                setTimeout(() => checkLivenessAndFace(runId), 700);
+                return;
+            }
+
+            const detection = detections[0];
+            const distance = faceapi.euclideanDistance(
+                savedDescriptor,
+                detection.descriptor
+            );
+
+            if (distance > FACE_MATCH_THRESHOLD) {
+                resetPriorityFaceProgress();
+                step = 'center';
+                document.getElementById('face_verified').value = '0';
+                statusBox.className = 'p-3 rounded-2xl bg-red-100 text-red-700 text-sm';
+                statusBox.innerText = 'KhuÃ´n máº·t khÃ´ng khá»›p vá»›i tÃ i khoáº£n';
+                setTimeout(() => checkLivenessAndFace(runId), 1000);
+                return;
+            }
+
+            if (FACE_VERIFICATION_MODE === 'priority') {
+                await handlePriorityFaceVerification(detection, distance, runId);
+                return;
+            }
+
+            const direction = getNoseDirection(detection.landmarks);
+
+            if (step === 'center') {
+                if (direction === 'center') {
+                    step = 'left';
+                    statusBox.className = 'p-3 rounded-2xl bg-yellow-100 text-yellow-700 text-sm';
+                    statusBox.innerText = 'ÄÃºng ngÆ°á»i. BÃ¢y giá» quay máº·t sang TRÃI.';
+                } else {
+                    statusBox.innerText = 'HÃ£y nhÃ¬n tháº³ng vÃ o camera.';
+                }
+            } else if (step === 'left') {
+                if (direction === 'left') {
+                    step = 'right';
+                    statusBox.innerText = 'Tá»‘t. BÃ¢y giá» quay máº·t sang PHáº¢I.';
+                } else {
+                    statusBox.innerText = 'Vui lÃ²ng quay máº·t sang TRÃI.';
+                }
+            } else if (step === 'right') {
+                if (direction === 'right') {
+                    step = 'final';
+                    statusBox.innerText = 'Tá»‘t. NhÃ¬n tháº³ng láº¡i Ä‘á»ƒ cháº¥m cÃ´ng.';
+                } else {
+                    statusBox.innerText = 'Vui lÃ²ng quay máº·t sang PHáº¢I.';
+                }
+            } else if (step === 'final') {
+                if (direction === 'center') {
+                    await completeFaceVerification(distance, runId);
+                    return;
+                } else {
+                    statusBox.innerText = 'Vui lÃ²ng nhÃ¬n tháº³ng láº¡i camera.';
+                }
+            }
+
+            setTimeout(() => checkLivenessAndFace(runId), 700);
+        }
+
+        function applyGpsAndSubmit(position) {
+            if (attendanceSubmitting) return;
+
+            attendanceSubmitting = true;
+            cachedGpsPosition = position;
+            document.getElementById('latitude').value = position.coords.latitude;
+            document.getElementById('longitude').value = position.coords.longitude;
+            hideGpsPermissionButton();
+            setStatus('ÄÃ£ láº¥y vá»‹ trÃ­ thÃ nh cÃ´ng.', 'green');
+            document.getElementById('attendance-form').submit();
+        }
+
+        function getCurrentPositionAsync(options) {
+            return new Promise((resolve, reject) => {
+                navigator.geolocation.getCurrentPosition(resolve, reject, options);
+            });
+        }
+
+        async function acquireGpsPosition(forceRequest = false) {
+            if (!navigator.geolocation) {
+                throw new Error('Browser khÃ´ng há»— trá»£ GPS');
+            }
+
+            if (isRequestingGps) {
+                return cachedGpsPosition;
+            }
+
+            if (cachedGpsPosition && !forceRequest) {
+                return cachedGpsPosition;
+            }
+
+            isRequestingGps = true;
+            setStatus('Äang láº¥y vá»‹ trÃ­...', 'yellow');
+
+            try {
+                try {
+                    const fastPosition = await getCurrentPositionAsync({

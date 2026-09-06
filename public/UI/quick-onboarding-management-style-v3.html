@@ -1,0 +1,1550 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Quick Onboarding - Management Style V3</title>
+  <style>
+    * { box-sizing: border-box; }
+    html { min-height: 100%; background: #eef1f6; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background:
+        radial-gradient(circle at top left, rgba(143, 0, 255, 0.09), transparent 34%),
+        linear-gradient(180deg, #f6f7fb 0%, #eef1f6 100%);
+      color: #111827;
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    }
+    button, input, select, textarea { font: inherit; }
+    button { -webkit-tap-highlight-color: transparent; }
+
+    .demo-shell {
+      display: grid;
+      place-items: start center;
+      min-height: 100vh;
+      padding: 22px;
+    }
+    .demo-phone {
+      --role-primary: #8f00ff;
+      width: min(430px, 100%);
+      min-height: calc(100vh - 44px);
+      padding: 14px;
+      border: 1px solid rgba(148, 163, 184, 0.36);
+      border-radius: 28px;
+      background: rgba(255, 255, 255, 0.62);
+      box-shadow: 0 24px 60px rgba(15, 23, 42, 0.12);
+      backdrop-filter: blur(18px);
+    }
+    .demo-topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 5px 4px 14px;
+    }
+    .demo-title {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .demo-title span {
+      color: var(--role-primary);
+      font-size: 11px;
+      font-weight: 850;
+      letter-spacing: .22em;
+      text-transform: uppercase;
+    }
+    .demo-title strong {
+      overflow: hidden;
+      color: #0f172a;
+      font-size: 23px;
+      font-weight: 950;
+      line-height: 1.1;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .demo-search-btn {
+      display: grid;
+      place-items: center;
+      width: 42px;
+      height: 42px;
+      border: 0;
+      border-radius: 999px;
+      background: #ffffff;
+      color: #111827;
+      cursor: pointer;
+      box-shadow: 0 10px 24px rgba(15, 23, 42, .12);
+    }
+    .demo-search-btn svg { width: 20px; height: 20px; stroke-width: 2.4; }
+
+    .portal-view--karaoke .kara-quick {
+      --quick-primary: var(--role-primary, #8f00ff);
+      --quick-text: #111827;
+      --quick-muted: #6b7280;
+      --quick-card: #ffffff;
+      --quick-blue: #0066ff;
+      --quick-green: #22c55e;
+      --quick-danger: #ff383c;
+      --quick-yellow: #f59e0b;
+      --quick-border: color-mix(in srgb, var(--quick-primary) 40%, #efd7ff);
+      --quick-soft: color-mix(in srgb, var(--quick-primary) 10%, #ffffff);
+      --quick-shadow: 0 12px 28px rgba(15, 23, 42, 0.1);
+      display: grid;
+      gap: 12px;
+      width: 100%;
+    }
+    .portal-view--karaoke .kara-quick__sr-title {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      clip: rect(0 0 0 0);
+      clip-path: inset(50%);
+      white-space: nowrap;
+    }
+
+    .portal-view--karaoke .kara-quick-tabs {
+      display: grid;
+      grid-template-columns: 1fr;
+      min-height: 50px;
+      border-radius: 8px;
+      background: rgba(17, 24, 39, 0.04);
+    }
+    .portal-view--karaoke .kara-quick-tabs__item {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      padding: 14px 10px;
+      border: 0;
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--quick-text);
+      cursor: default;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-align: center;
+      box-shadow: 0 5px 14px rgba(15, 23, 42, 0.14);
+    }
+
+    .portal-view--karaoke .kara-quick-search[hidden] { display: none; }
+    .portal-view--karaoke .kara-quick-search__field {
+      display: grid;
+      grid-template-columns: 20px minmax(0, 1fr);
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      padding: 0 12px;
+      border: 1px solid rgba(17, 24, 39, 0.08);
+      border-radius: 10px;
+      background: #ffffff;
+      box-shadow: var(--quick-shadow);
+    }
+    .portal-view--karaoke .kara-quick-search__field svg {
+      width: 18px;
+      height: 18px;
+      color: var(--quick-muted);
+    }
+    .portal-view--karaoke .kara-quick-search__field input {
+      min-width: 0;
+      border: 0;
+      background: transparent;
+      color: var(--quick-text);
+      font-size: 14px;
+      outline: none;
+    }
+
+    .portal-view--karaoke .kara-quick-panel {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+      border-radius: 12px;
+      background: var(--quick-card);
+      box-shadow: var(--quick-shadow);
+    }
+    .portal-view--karaoke .kara-quick-panel__header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .portal-view--karaoke .kara-quick-panel__header div {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .portal-view--karaoke .kara-quick-panel__header h3 {
+      margin: 0;
+      color: var(--quick-text);
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    .portal-view--karaoke .kara-quick-panel__header p {
+      margin: 0;
+      color: var(--quick-muted);
+      font-size: 12px;
+      font-weight: 700;
+      line-height: 1.35;
+    }
+    .portal-view--karaoke .kara-quick-panel__badge {
+      flex: 0 0 auto;
+      min-height: 30px;
+      padding: 8px 10px;
+      border-radius: 999px;
+      background: color-mix(in srgb, var(--quick-primary) 10%, #ffffff);
+      color: var(--quick-primary);
+      font-size: 11px;
+      font-weight: 900;
+      line-height: 1;
+      text-transform: uppercase;
+    }
+    .portal-view--karaoke .kara-quick-create-form {
+      display: grid;
+      gap: 10px;
+      padding: 12px;
+      border: 1.5px dashed var(--quick-primary);
+      border-radius: 10px;
+      background: var(--quick-soft);
+    }
+    .portal-view--karaoke .kara-quick-create-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 96px;
+      gap: 8px;
+    }
+    .portal-view--karaoke .kara-quick-field {
+      display: grid;
+      gap: 6px;
+    }
+    .portal-view--karaoke .kara-quick-field span {
+      color: var(--quick-text);
+      font-size: 13px;
+      font-weight: 800;
+      line-height: 1.2;
+    }
+    .portal-view--karaoke .kara-quick-field input,
+    .portal-view--karaoke .kara-quick-field select,
+    .portal-view--karaoke .kara-quick-field textarea {
+      width: 100%;
+      min-width: 0;
+      min-height: 42px;
+      padding: 0 12px;
+      border: 1px solid var(--quick-border);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--quick-text);
+      font-size: 14px;
+      font-weight: 750;
+      outline: none;
+    }
+    .portal-view--karaoke .kara-quick-field textarea {
+      min-height: 128px;
+      padding: 12px;
+      border-radius: 14px;
+      line-height: 1.45;
+      resize: vertical;
+    }
+    .portal-view--karaoke .kara-quick-field input:focus,
+    .portal-view--karaoke .kara-quick-field select:focus,
+    .portal-view--karaoke .kara-quick-field textarea:focus {
+      border-color: var(--quick-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--quick-primary) 14%, transparent);
+    }
+    .portal-view--karaoke .kara-quick-create-form__actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 8px;
+    }
+    .portal-view--karaoke .kara-quick-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 7px;
+      min-height: 42px;
+      padding: 10px 12px;
+      border: 0;
+      border-radius: 8px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 850;
+      line-height: 1;
+      text-decoration: none;
+    }
+    .portal-view--karaoke .kara-quick-btn svg { width: 16px; height: 16px; stroke-width: 2.4; }
+    .portal-view--karaoke .kara-quick-btn--primary {
+      background: var(--quick-primary);
+      color: #ffffff;
+      box-shadow: 0 8px 18px color-mix(in srgb, var(--quick-primary) 25%, transparent);
+    }
+    .portal-view--karaoke .kara-quick-btn--dark {
+      background: #111827;
+      color: #ffffff;
+    }
+    .portal-view--karaoke .kara-quick-btn--ghost {
+      background: #f3f4f6;
+      color: var(--quick-muted);
+    }
+    .portal-view--karaoke .kara-quick-btn--success {
+      background: #16a34a;
+      color: #ffffff;
+      box-shadow: 0 10px 22px rgba(34, 197, 94, .2);
+    }
+    .portal-view--karaoke .kara-quick-btn:active { transform: translateY(1px); }
+
+    .portal-view--karaoke .kara-quick-list-section {
+      display: grid;
+      gap: 10px;
+    }
+    .portal-view--karaoke .kara-quick-list-section__title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .portal-view--karaoke .kara-quick-list-section__title h3 {
+      margin: 0;
+      color: var(--quick-text);
+      font-size: 16px;
+      font-weight: 900;
+      line-height: 1.2;
+    }
+    .portal-view--karaoke .kara-quick-list-section__title span {
+      color: var(--quick-muted);
+      font-size: 13px;
+      font-weight: 700;
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+    .portal-view--karaoke .kara-quick-list {
+      display: grid;
+      gap: 10px;
+    }
+    .portal-view--karaoke .kara-quick-empty {
+      display: grid;
+      place-items: center;
+      min-height: 150px;
+      padding: 18px;
+      border: 1.5px dashed color-mix(in srgb, var(--quick-primary) 26%, #e5e7eb);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.72);
+      color: var(--quick-muted);
+      text-align: center;
+    }
+    .portal-view--karaoke .kara-quick-empty strong {
+      color: var(--quick-text);
+      font-size: 15px;
+      font-weight: 900;
+    }
+    .portal-view--karaoke .kara-quick-empty span {
+      margin-top: 4px;
+      font-size: 12px;
+      font-weight: 650;
+    }
+
+    .portal-view--karaoke .kara-quick-card {
+      display: grid;
+      grid-template-columns: 74px minmax(0, 1fr) auto;
+      align-items: start;
+      gap: 10px;
+      min-height: 118px;
+      padding: 10px;
+      border: 1px solid rgba(148, 163, 184, 0.2);
+      border-radius: 12px;
+      background: var(--quick-card);
+      box-shadow: 0 1px 0 rgba(15, 23, 42, 0.04), var(--quick-shadow);
+      transition: background 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
+    }
+    .portal-view--karaoke .kara-quick-card.is-sent {
+      border-color: rgba(245, 158, 11, .42);
+      background:
+        linear-gradient(135deg, #fff7ed, #ffffff 55%, #fffbeb);
+      box-shadow: 0 12px 26px rgba(245, 158, 11, .16);
+    }
+    .portal-view--karaoke .kara-quick-card.is-completed {
+      border-color: rgba(34, 197, 94, .42);
+      background:
+        linear-gradient(135deg, #ecfdf5, #ffffff 55%, #f0fdf4);
+      box-shadow: 0 12px 26px rgba(34, 197, 94, .16);
+    }
+    .portal-view--karaoke .kara-quick-card__media {
+      display: grid;
+      justify-items: center;
+      gap: 6px;
+      min-width: 0;
+    }
+    .portal-view--karaoke .kara-quick-avatar {
+      position: relative;
+      display: grid;
+      place-items: center;
+      width: 68px;
+      height: 76px;
+      overflow: hidden;
+      border: 1.5px dashed color-mix(in srgb, var(--quick-primary) 40%, #d8b4fe);
+      border-radius: 16px;
+      background: linear-gradient(135deg, #ffffff, #faf5ff);
+      color: var(--quick-primary);
+      cursor: pointer;
+      box-shadow: 0 8px 16px rgba(15, 23, 42, .08);
+    }
+    .portal-view--karaoke .kara-quick-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .portal-view--karaoke .kara-quick-avatar svg {
+      width: 25px;
+      height: 25px;
+      stroke-width: 2.4;
+    }
+    .portal-view--karaoke .kara-quick-avatar__input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+      opacity: 0;
+      pointer-events: none;
+    }
+    .portal-view--karaoke .kara-quick-code {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 42px;
+      min-height: 22px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      background: var(--quick-primary);
+      color: #ffffff;
+      font-size: 12px;
+      font-weight: 950;
+      letter-spacing: .06em;
+      box-shadow: 0 8px 16px color-mix(in srgb, var(--quick-primary) 18%, transparent);
+    }
+    .portal-view--karaoke .kara-quick-card__body {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+    }
+    .portal-view--karaoke .kara-quick-name-input {
+      width: 100%;
+      min-width: 0;
+      height: 38px;
+      padding: 0 10px;
+      border: 1px solid color-mix(in srgb, var(--quick-primary) 24%, #e5e7eb);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--quick-text);
+      font-size: 14px;
+      font-weight: 900;
+      outline: none;
+    }
+    .portal-view--karaoke .kara-quick-name-input:focus {
+      border-color: var(--quick-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--quick-primary) 12%, transparent);
+    }
+    .portal-view--karaoke .kara-quick-card__grid {
+      display: grid;
+      grid-template-columns: minmax(0, .95fr) minmax(0, 1.05fr);
+      gap: 7px;
+    }
+    .portal-view--karaoke .kara-quick-mini-field {
+      display: grid;
+      gap: 4px;
+      min-width: 0;
+    }
+    .portal-view--karaoke .kara-quick-mini-field span {
+      color: var(--quick-muted);
+      font-size: 10px;
+      font-weight: 900;
+      line-height: 1;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .portal-view--karaoke .kara-quick-branch-pill {
+      display: inline-flex;
+      align-items: center;
+      min-width: 0;
+      height: 34px;
+      padding: 0 9px;
+      overflow: hidden;
+      border: 1px solid rgba(148, 163, 184, .28);
+      border-radius: 8px;
+      background: #f8fafc;
+      color: #334155;
+      font-size: 12px;
+      font-weight: 800;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .portal-view--karaoke .kara-quick-mini-field select {
+      width: 100%;
+      min-width: 0;
+      height: 34px;
+      padding: 0 8px;
+      border: 1px solid color-mix(in srgb, var(--quick-primary) 22%, #e5e7eb);
+      border-radius: 8px;
+      background: #f8fafc;
+      color: var(--quick-text);
+      font-size: 12px;
+      font-weight: 750;
+      outline: none;
+    }
+    .portal-view--karaoke .kara-quick-mini-field select:focus {
+      border-color: var(--quick-primary);
+      box-shadow: 0 0 0 3px color-mix(in srgb, var(--quick-primary) 12%, transparent);
+      background: #ffffff;
+    }
+    .portal-view--karaoke .kara-quick-card__actions {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      min-height: 30px;
+      padding: 3px 6px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.94);
+      box-shadow: 0 4px 12px rgba(15, 23, 42, 0.18);
+    }
+    .portal-view--karaoke .kara-quick-icon-btn {
+      display: grid;
+      place-items: center;
+      width: 24px;
+      height: 24px;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      background: transparent;
+      color: #111827;
+      cursor: pointer;
+    }
+    .portal-view--karaoke .kara-quick-icon-btn svg { width: 16px; height: 16px; stroke-width: 2.4; }
+    .portal-view--karaoke .kara-quick-icon-btn--share { color: var(--quick-primary); }
+    .portal-view--karaoke .kara-quick-icon-btn--done { color: #16a34a; }
+    .portal-view--karaoke .kara-quick-icon-btn--danger { color: var(--quick-danger); }
+
+    body.kara-quick-modal-open { overflow: hidden; }
+    .kara-quick-modal[hidden] { display: none; }
+    .kara-quick-modal {
+      --quick-primary: var(--role-primary, #8f00ff);
+      position: fixed;
+      inset: 0;
+      z-index: 2200;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      width: 100vw;
+      min-height: 100vh;
+      min-height: 100dvh;
+      padding: 0;
+    }
+    .kara-quick-modal__backdrop {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      background: rgba(17, 24, 39, 0.34);
+      transition: opacity 240ms ease;
+    }
+    .kara-quick-modal__sheet {
+      position: relative;
+      display: grid;
+      width: min(430px, 100vw);
+      max-height: calc(100vh - 12px);
+      max-height: calc(100dvh - 12px);
+      margin: 0;
+      overflow: hidden auto;
+      border-radius: 28px 28px 0 0;
+      background:
+        radial-gradient(circle at 10% 0%, rgba(245, 158, 11, 0.16), transparent 34%),
+        radial-gradient(circle at 100% 4%, rgba(34, 197, 94, 0.16), transparent 34%),
+        #ffffff;
+      color: #111827;
+      box-shadow: 0 -8px 24px rgba(15, 23, 42, 0.22);
+      opacity: 0;
+      transform: translate3d(0, 100%, 0);
+      transition:
+        transform 240ms cubic-bezier(0.22, 1, 0.36, 1),
+        opacity 240ms ease;
+    }
+    .kara-quick-modal.is-open .kara-quick-modal__backdrop { opacity: 1; }
+    .kara-quick-modal.is-open .kara-quick-modal__sheet {
+      opacity: 1;
+      transform: translate3d(0, 0, 0);
+    }
+    .kara-quick-modal.is-closing { pointer-events: none; }
+    .kara-quick-modal__grabber {
+      justify-self: center;
+      width: 42px;
+      height: 5px;
+      margin-top: 10px;
+      border-radius: 999px;
+      background: #111827;
+      opacity: .86;
+    }
+    .kara-quick-modal__header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 16px 12px;
+      border-bottom: 1px solid rgba(148, 163, 184, 0.22);
+    }
+    .kara-quick-modal__heading {
+      display: grid;
+      gap: 3px;
+      min-width: 0;
+    }
+    .kara-quick-modal__heading h3 {
+      margin: 0;
+      color: #111827;
+      font-size: 18px;
+      font-weight: 950;
+      line-height: 1.15;
+    }
+    .kara-quick-modal__heading p {
+      margin: 0;
+      color: #6b7280;
+      font-size: 12px;
+      font-weight: 650;
+      line-height: 1.3;
+    }
+    .kara-quick-modal__close {
+      display: grid;
+      place-items: center;
+      flex: 0 0 auto;
+      width: 34px;
+      height: 34px;
+      padding: 0;
+      border: 0;
+      border-radius: 999px;
+      background: rgba(17, 24, 39, 0.06);
+      color: #111827;
+      cursor: pointer;
+    }
+    .kara-quick-modal__close svg { width: 20px; height: 20px; stroke-width: 2.4; }
+    .kara-quick-modal__body {
+      display: grid;
+      gap: 12px;
+      padding: 14px;
+    }
+    .kara-quick-share-card {
+      display: grid;
+      gap: 12px;
+      padding: 12px;
+      border: 1px solid rgba(148, 163, 184, 0.3);
+      border-radius: 20px;
+      background: rgba(255, 255, 255, 0.88);
+      box-shadow: 0 14px 34px rgba(15, 23, 42, 0.1);
+      backdrop-filter: blur(14px);
+    }
+    .kara-quick-share-hero {
+      display: grid;
+      grid-template-columns: 46px minmax(0, 1fr);
+      align-items: center;
+      gap: 10px;
+      padding: 10px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #fff7ed, #ffffff 50%, #f0fdf4);
+      border: 1px solid rgba(245, 158, 11, 0.16);
+    }
+    .kara-quick-share-hero__avatar {
+      display: grid;
+      place-items: center;
+      width: 46px;
+      height: 46px;
+      overflow: hidden;
+      border-radius: 16px;
+      background: linear-gradient(135deg, #f59e0b, #22c55e);
+      color: #ffffff;
+      box-shadow: 0 10px 20px rgba(34, 197, 94, 0.2);
+    }
+    .kara-quick-share-hero__avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .kara-quick-share-hero__avatar svg { width: 22px; height: 22px; stroke-width: 2.4; }
+    .kara-quick-share-hero__content {
+      display: grid;
+      gap: 2px;
+      min-width: 0;
+    }
+    .kara-quick-share-hero__content span {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 850;
+      line-height: 1;
+    }
+    .kara-quick-share-hero__content strong {
+      overflow: hidden;
+      color: #111827;
+      font-size: 16px;
+      font-weight: 950;
+      line-height: 1.15;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .kara-quick-share-hero__content small {
+      overflow: hidden;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 750;
+      line-height: 1.2;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .kara-quick-share-status {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 27px;
+      padding: 6px 9px;
+      border-radius: 999px;
+      background: #fef3c7;
+      color: #92400e;
+      font-size: 11px;
+      font-weight: 950;
+      line-height: 1;
+      white-space: nowrap;
+    }
+    .kara-quick-share-status.is-completed {
+      background: #dcfce7;
+      color: #15803d;
+    }
+    .kara-quick-share-grid {
+      display: grid;
+      grid-template-columns: 148px minmax(0, 1fr);
+      gap: 10px;
+      align-items: stretch;
+    }
+    .kara-quick-share-qrbox {
+      display: grid;
+      place-items: center;
+      gap: 8px;
+      padding: 10px;
+      border-radius: 18px;
+      background: #ffffff;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      box-shadow: inset 0 0 0 5px #f8fafc;
+    }
+    .kara-quick-share-qrbox img {
+      width: 124px;
+      height: 124px;
+      border: 0;
+      border-radius: 14px;
+      background: #ffffff;
+      object-fit: contain;
+    }
+    .kara-quick-share-tools {
+      display: grid;
+      gap: 8px;
+    }
+    .kara-quick-link-box {
+      display: grid;
+      gap: 6px;
+      padding: 9px;
+      border: 1px solid rgba(148, 163, 184, 0.28);
+      border-radius: 14px;
+      background: #f8fafc;
+    }
+    .kara-quick-link-box span {
+      color: #64748b;
+      font-size: 10.5px;
+      font-weight: 900;
+      text-transform: uppercase;
+      letter-spacing: .03em;
+    }
+    .kara-quick-link-box input {
+      width: 100%;
+      min-width: 0;
+      border: 0;
+      background: transparent;
+      color: #111827;
+      font-size: 12px;
+      font-weight: 750;
+      outline: none;
+    }
+    .kara-quick-share-action-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .kara-quick-mini-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      min-height: 38px;
+      padding: 9px 10px;
+      border: 1px solid rgba(148, 163, 184, 0.32);
+      border-radius: 12px;
+      background: #ffffff;
+      color: #334155;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 850;
+      line-height: 1;
+    }
+    .kara-quick-mini-btn svg { width: 15px; height: 15px; stroke-width: 2.4; }
+    .kara-quick-message-head {
+      display: flex;
+      align-items: end;
+      justify-content: space-between;
+      gap: 10px;
+      margin-bottom: -2px;
+    }
+    .kara-quick-message-head span {
+      color: #374151;
+      font-size: 12px;
+      font-weight: 950;
+      line-height: 1.2;
+    }
+    .kara-quick-message-head small {
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 700;
+      line-height: 1.2;
+      text-align: right;
+    }
+    .kara-quick-modal__footer {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+    .kara-quick-share-cta {
+      min-height: 52px;
+      border-radius: 18px;
+      font-size: 13px;
+      font-weight: 950;
+      box-shadow: 0 14px 28px rgba(15, 23, 42, .12);
+    }
+    .kara-quick-share-cta--copy {
+      border: 1px solid color-mix(in srgb, var(--quick-primary) 18%, #e2e8f0);
+      background: linear-gradient(180deg, #ffffff, #f8fafc);
+      color: #334155;
+    }
+    .kara-quick-share-cta--send {
+      background: linear-gradient(135deg, #8f00ff, #0066ff);
+      color: #ffffff;
+      box-shadow: 0 16px 30px rgba(143, 0, 255, .24);
+    }
+    .kara-quick-toast {
+      position: fixed;
+      left: 50%;
+      bottom: 24px;
+      z-index: 2400;
+      display: none;
+      max-width: min(360px, calc(100vw - 32px));
+      transform: translateX(-50%);
+      padding: 12px 14px;
+      border-radius: 16px;
+      background: #111827;
+      color: #ffffff;
+      box-shadow: 0 18px 40px rgba(15, 23, 42, .28);
+      font-size: 13px;
+      font-weight: 850;
+      line-height: 1.3;
+      text-align: center;
+    }
+    .kara-quick-toast.is-show { display: block; }
+
+    @media (max-width: 420px) {
+      .demo-shell { padding: 0; }
+      .demo-phone {
+        width: 100%;
+        min-height: 100vh;
+        border: 0;
+        border-radius: 0;
+        box-shadow: none;
+      }
+      .portal-view--karaoke .kara-quick-create-grid { grid-template-columns: 1fr; }
+      .portal-view--karaoke .kara-quick-card {
+        grid-template-columns: 72px minmax(0, 1fr) auto;
+        gap: 8px;
+      }
+      .portal-view--karaoke .kara-quick-card__grid { grid-template-columns: 1fr; }
+      .kara-quick-share-hero { grid-template-columns: 42px minmax(0, 1fr); }
+      .kara-quick-share-status { grid-column: 1 / -1; justify-self: start; }
+      .kara-quick-share-grid { grid-template-columns: 1fr; }
+      .kara-quick-share-qrbox img { width: 154px; height: 154px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .kara-quick-modal__backdrop,
+      .kara-quick-modal__sheet { transition: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="demo-shell">
+    <div class="demo-phone portal-view--karaoke">
+      <header class="demo-topbar">
+        <div class="demo-title">
+          <span>MAXSIM</span>
+          <strong>Quick Onboarding</strong>
+        </div>
+        <button class="demo-search-btn" type="button" aria-label="Tìm lời mời" data-quick-search-trigger>
+          <i data-lucide="search"></i>
+        </button>
+      </header>
+
+      <section class="kara-quick" aria-labelledby="kara-quick-title" data-kara-quick-page data-quick-status-url="">
+        <h1 class="kara-quick__sr-title" id="kara-quick-title">Quick Onboarding</h1>
+
+        <div class="kara-quick-tabs" aria-label="Quick Onboarding">
+          <button class="kara-quick-tabs__item" type="button">Tạo</button>
+        </div>
+
+        <div class="kara-quick-search" data-quick-search hidden>
+          <label class="kara-quick-search__field">
+            <i data-lucide="search"></i>
+            <input type="search" placeholder="Tìm theo mã, tên, chi nhánh, chức vụ" data-quick-search-input>
+          </label>
+        </div>
+
+        <section class="kara-quick-panel" aria-label="Công cụ tạo lời mời">
+          <div class="kara-quick-panel__header">
+            <div>
+              <h3>Tạo</h3>
+              <p>Tạo thêm nhiều lời mời cho cùng một chi nhánh.</p>
+            </div>
+            <span class="kara-quick-panel__badge">Nhanh</span>
+          </div>
+
+          <form class="kara-quick-create-form" data-quick-create-form>
+            <div class="kara-quick-create-grid">
+              <label class="kara-quick-field">
+                <span>Chọn chi nhánh</span>
+                <select data-quick-branch></select>
+              </label>
+              <label class="kara-quick-field">
+                <span>Số lượng</span>
+                <input type="number" min="1" max="100" inputmode="numeric" value="10" data-quick-count>
+              </label>
+            </div>
+            <div class="kara-quick-create-form__actions">
+              <button class="kara-quick-btn kara-quick-btn--primary" type="submit" data-quick-create-mode="append">
+                <i data-lucide="plus"></i>
+                <span>Tạo thêm</span>
+              </button>
+            </div>
+          </form>
+        </section>
+
+        <section class="kara-quick-list-section" aria-labelledby="kara-quick-list-title">
+          <div class="kara-quick-list-section__title">
+            <h3 id="kara-quick-list-title">Danh sách lời mời</h3>
+            <span data-quick-count-label>0 lời mời</span>
+          </div>
+          <div class="kara-quick-list" data-quick-list></div>
+          <div class="kara-quick-empty" data-quick-empty>
+            <div>
+              <strong>Chưa có lời mời.</strong><br>
+              <span>Chọn chi nhánh, nhập số lượng và bấm Tạo thêm để bắt đầu.</span>
+            </div>
+          </div>
+        </section>
+      </section>
+    </div>
+  </main>
+
+  <div class="kara-quick-modal" data-quick-share-modal hidden>
+    <div class="kara-quick-modal__backdrop" data-quick-share-close></div>
+    <div class="kara-quick-modal__sheet" role="dialog" aria-modal="true" aria-labelledby="quick-share-title">
+      <span class="kara-quick-modal__grabber" aria-hidden="true"></span>
+      <header class="kara-quick-modal__header">
+        <div class="kara-quick-modal__heading">
+          <h3 id="quick-share-title">Chia sẻ lời mời</h3>
+          <p>Gửi link hoặc QR cho nhân sự cập nhật hồ sơ.</p>
+        </div>
+        <button class="kara-quick-modal__close" type="button" aria-label="Đóng" data-quick-share-close>
+          <i data-lucide="x"></i>
+        </button>
+      </header>
+      <div class="kara-quick-modal__body">
+        <section class="kara-quick-share-card">
+          <div class="kara-quick-share-hero">
+            <span class="kara-quick-share-hero__avatar" data-share-avatar><i data-lucide="user-round-check"></i></span>
+            <div class="kara-quick-share-hero__content">
+              <span data-share-code>Mã 001</span>
+              <strong data-share-name>Nhân viên mới</strong>
+              <small data-share-meta>Chi nhánh · Nhân viên</small>
+            </div>
+          </div>
+
+          <div class="kara-quick-share-grid">
+            <div class="kara-quick-share-qrbox">
+              <img src="" alt="QR lời mời" data-share-qr>
+            </div>
+            <div class="kara-quick-share-tools">
+              <label class="kara-quick-link-box">
+                <span>Link cập nhật</span>
+                <input type="text" readonly data-share-link>
+              </label>
+              <div class="kara-quick-share-action-grid">
+                <button class="kara-quick-mini-btn" type="button" data-share-copy-link>
+                  <i data-lucide="copy"></i>
+                  <span>Copy link</span>
+                </button>
+                <button class="kara-quick-mini-btn" type="button" data-share-download-qr>
+                  <i data-lucide="download"></i>
+                  <span>Tải QR</span>
+                </button>
+              </div>
+            </div>
+          </div>
+
+        </section>
+        <footer class="kara-quick-modal__footer">
+          <button class="kara-quick-btn kara-quick-share-cta kara-quick-share-cta--copy" type="button" data-share-copy-message>
+            <i data-lucide="copy"></i>
+            <span>Copy tin nhắn</span>
+          </button>
+          <button class="kara-quick-btn kara-quick-share-cta kara-quick-share-cta--send" type="button" data-share-send>
+            <i data-lucide="send"></i>
+            <span>Chia sẻ nhanh</span>
+          </button>
+        </footer>
+      </div>
+    </div>
+  </div>
+  <div class="kara-quick-toast" role="status" data-quick-toast></div>
+
+  <script>
+    (function () {
+      function svg(name) {
+        var common = 'xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"';
+        var paths = {
+          search: '<circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.3-4.3"></path>',
+          plus: '<path d="M12 5v14"></path><path d="M5 12h14"></path>',
+          x: '<path d="M18 6 6 18"></path><path d="m6 6 12 12"></path>',
+          'user-round-check': '<path d="M2 21a8 8 0 0 1 13.3-6"></path><circle cx="10" cy="8" r="5"></circle><path d="m16 19 2 2 4-4"></path>',
+          download: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="M7 10l5 5 5-5"></path><path d="M12 15V3"></path>',
+          copy: '<rect width="14" height="14" x="8" y="8" rx="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path>',
+          'share-2': '<circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><path d="m8.6 13.5 6.8 4"></path><path d="m15.4 6.5-6.8 4"></path>',
+          'trash-2': '<path d="M3 6h18"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path><path d="M19 6l-1 14c-.1 1-1 2-2 2H8c-1 0-1.9-1-2-2L5 6"></path><path d="M10 11v6"></path><path d="M14 11v6"></path>',
+          send: '<path d="m22 2-7 20-4-9-9-4Z"></path><path d="M22 2 11 13"></path>',
+          'check-circle-2': '<circle cx="12" cy="12" r="10"></circle><path d="m9 12 2 2 4-4"></path>',
+          camera: '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3Z"></path><circle cx="12" cy="13" r="3"></circle>'
+        };
+        return '<svg ' + common + '>' + (paths[name] || paths.search) + '</svg>';
+      }
+      window.lucide = window.lucide || {};
+      window.lucide.createIcons = function () {
+        document.querySelectorAll('i[data-lucide]').forEach(function (node) {
+          var name = node.getAttribute('data-lucide') || 'search';
+          var wrapper = document.createElement('span');
+          wrapper.innerHTML = svg(name);
+          var newNode = wrapper.firstElementChild;
+          Array.prototype.slice.call(node.attributes).forEach(function (attr) {
+            if (attr.name !== 'data-lucide') newNode.setAttribute(attr.name, attr.value);
+          });
+          node.replaceWith(newNode);
+        });
+      };
+    })();
+  </script>
+  <script>
+    (function () {
+      var STORAGE_KEY = 'quickOnboardingManagementStyleDraftsV3';
+      var ROLE_OPTIONS = [
+        { value: 'staff', label: 'Nhân viên' },
+        { value: 'booking', label: 'Nhân viên đặt phòng' },
+        { value: 'cashier', label: 'Thu ngân' },
+        { value: 'ctv', label: 'CTV' },
+        { value: 'shift_manager', label: 'Quản lý ca' }
+      ];
+      var BRANCH_OPTIONS = [
+        { value: 'maxsim-1', label: 'MAXSIM Quận 1' },
+        { value: 'maxsim-3', label: 'MAXSIM Quận 3' },
+        { value: 'maxsim-7', label: 'MAXSIM Quận 7' },
+        { value: 'maxsim-tan-binh', label: 'MAXSIM Tân Bình' }
+      ];
+      var state = { entries: [], activeShareId: null, defaultBranch: 'maxsim-1' };
+      var saveTimers = new Map();
+      var shareCloseTimer = 0;
+      var toastTimer = 0;
+
+      function clampCount(value) {
+        var count = parseInt(value, 10);
+        if (Number.isNaN(count)) return 1;
+        return Math.min(Math.max(count, 1), 100);
+      }
+      function formatCode(number) {
+        return String(number).padStart(3, '0');
+      }
+      function escapeHtml(value) {
+        return String(value == null ? '' : value)
+          .replace(/&/g, '&amp;')
+          .replace(/</g, '&lt;')
+          .replace(/>/g, '&gt;')
+          .replace(/"/g, '&quot;')
+          .replace(/'/g, '&#039;');
+      }
+      function normalizeText(value) {
+        return String(value || '').toLocaleLowerCase('vi-VN');
+      }
+      function roleLabel(value) {
+        var found = ROLE_OPTIONS.find(function (role) { return role.value === value; });
+        return found ? found.label : 'Nhân viên';
+      }
+      function branchLabel(value) {
+        var found = BRANCH_OPTIONS.find(function (branch) { return branch.value === value; });
+        return found ? found.label : 'MAXSIM Quận 1';
+      }
+      function makeInviteUrl(entry) {
+        return window.location.origin + '/quick-onboarding/invite/' + encodeURIComponent(entry.code);
+      }
+      function optionHtml(options, selectedValue) {
+        return options.map(function (option) {
+          return '<option value="' + escapeHtml(option.value) + '"' + (option.value === selectedValue ? ' selected' : '') + '>' + escapeHtml(option.label) + '</option>';
+        }).join('');
+      }
+      function createEntry(number, branch) {
+        var code = formatCode(number);
+        return {
+          id: 'invite-' + Date.now() + '-' + Math.random().toString(16).slice(2),
+          code: code,
+          expectedName: '',
+          branch: branch || state.defaultBranch,
+          role: 'staff',
+          status: 'draft',
+          avatar: '',
+          inviteUrl: window.location.origin + '/quick-onboarding/invite/' + code
+        };
+      }
+      function refreshCodes() {
+        state.entries.forEach(function (entry, index) {
+          entry.code = formatCode(index + 1);
+          entry.inviteUrl = makeInviteUrl(entry);
+        });
+      }
+      function saveState() {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ entries: state.entries, defaultBranch: state.defaultBranch }));
+        } catch (error) {}
+      }
+      function readState() {
+        try {
+          var raw = JSON.parse(localStorage.getItem(STORAGE_KEY) || '{}');
+          var parsed = Array.isArray(raw) ? raw : (raw.entries || []);
+          state.defaultBranch = raw.defaultBranch || state.defaultBranch;
+          if (Array.isArray(parsed)) {
+            state.entries = parsed.map(function (entry, index) {
+              return {
+                id: entry.id || ('invite-' + Date.now() + '-' + index),
+                code: entry.code || formatCode(index + 1),
+                expectedName: entry.expectedName || '',
+                branch: entry.branch || state.defaultBranch,
+                role: entry.role || 'staff',
+                status: entry.status || 'draft',
+                avatar: entry.avatar || '',
+                inviteUrl: entry.inviteUrl || (window.location.origin + '/quick-onboarding/invite/' + (entry.code || formatCode(index + 1)))
+              };
+            });
+            refreshCodes();
+          }
+        } catch (error) {
+          state.entries = [];
+        }
+      }
+      function statusClass(status) {
+        if (status === 'sent') return 'is-sent';
+        if (status === 'completed') return 'is-completed';
+        return '';
+      }
+      function statusLabel(status) {
+        if (status === 'sent') return 'Đã gửi';
+        if (status === 'completed') return 'Hoàn tất';
+        return 'Nháp';
+      }
+      function avatarHtml(entry) {
+        if (entry.avatar) {
+          return '<img src="' + escapeHtml(entry.avatar) + '" alt="Ảnh ' + escapeHtml(entry.expectedName || entry.code) + '">';
+        }
+        return '<i data-lucide="camera"></i>';
+      }
+      function renderEntry(entry) {
+        var name = entry.expectedName || '';
+        var search = normalizeText([entry.code, name, branchLabel(entry.branch), roleLabel(entry.role), statusLabel(entry.status)].join(' '));
+        return [
+          '<article class="kara-quick-card ' + statusClass(entry.status) + '" data-entry-card data-entry-id="' + escapeHtml(entry.id) + '" data-search="' + escapeHtml(search) + '">',
+          '<div class="kara-quick-card__media">',
+          '<label class="kara-quick-avatar" aria-label="Chọn ảnh cho mã ' + escapeHtml(entry.code) + '">',
+          avatarHtml(entry),
+          '<input class="kara-quick-avatar__input" type="file" accept="image/*" data-entry-avatar>',
+          '</label>',
+          '<span class="kara-quick-code">' + escapeHtml(entry.code) + '</span>',
+          '</div>',
+          '<div class="kara-quick-card__body">',
+          '<input class="kara-quick-name-input" type="text" maxlength="255" placeholder="Nhập tên dự kiến" value="' + escapeHtml(name) + '" data-entry-name autocomplete="off">',
+          '<div class="kara-quick-card__grid">',
+          '<label class="kara-quick-mini-field"><span>Chi nhánh</span><span class="kara-quick-branch-pill">' + escapeHtml(branchLabel(entry.branch)) + '</span></label>',
+          '<label class="kara-quick-mini-field"><span>Chức vụ</span><select data-entry-role>' + optionHtml(ROLE_OPTIONS, entry.role) + '</select></label>',
+          '</div>',
+          '</div>',
+          '<div class="kara-quick-card__actions" aria-label="Tác vụ lời mời">',
+          '<button class="kara-quick-icon-btn kara-quick-icon-btn--share" type="button" aria-label="Chia sẻ lời mời" data-entry-share><i data-lucide="share-2"></i></button>',
+          '<button class="kara-quick-icon-btn kara-quick-icon-btn--danger" type="button" aria-label="Xóa lời mời" data-entry-delete><i data-lucide="trash-2"></i></button>',
+          '</div>',
+          '</article>'
+        ].join('');
+      }
+      function updateCounter() {
+        var label = document.querySelector('[data-quick-count-label]');
+        if (label) label.textContent = state.entries.length + ' lời mời';
+      }
+      function refreshIcons() {
+        if (window.lucide && typeof window.lucide.createIcons === 'function') window.lucide.createIcons();
+      }
+      function applySearch() {
+        var input = document.querySelector('[data-quick-search-input]');
+        var keyword = normalizeText(input ? input.value : '');
+        document.querySelectorAll('[data-entry-card]').forEach(function (card) {
+          card.style.display = !keyword || normalizeText(card.dataset.search || '').indexOf(keyword) !== -1 ? '' : 'none';
+        });
+      }
+      function renderList() {
+        var list = document.querySelector('[data-quick-list]');
+        var empty = document.querySelector('[data-quick-empty]');
+        if (!list) return;
+        list.innerHTML = state.entries.map(renderEntry).join('');
+        if (empty) empty.hidden = state.entries.length > 0;
+        updateCounter();
+        applySearch();
+        refreshIcons();
+      }
+      function showToast(message) {
+        var toast = document.querySelector('[data-quick-toast]');
+        if (!toast) return;
+        clearTimeout(toastTimer);
+        toast.textContent = message;
+        toast.classList.add('is-show');
+        toastTimer = setTimeout(function () { toast.classList.remove('is-show'); }, 1700);
+      }
+      function updateEntryFromCard(card) {
+        if (!card) return null;
+        var entry = state.entries.find(function (item) { return item.id === card.dataset.entryId; });
+        if (!entry) return null;
+        var nameInput = card.querySelector('[data-entry-name]');
+        var roleSelect = card.querySelector('[data-entry-role]');
+        entry.expectedName = nameInput ? nameInput.value.trim() : entry.expectedName;
+        entry.role = roleSelect ? roleSelect.value : entry.role;
+        entry.inviteUrl = makeInviteUrl(entry);
+        card.dataset.search = normalizeText([entry.code, entry.expectedName, branchLabel(entry.branch), roleLabel(entry.role), statusLabel(entry.status)].join(' '));
+        saveState();
+        applySearch();
+        return entry;
+      }
+      function debounceSave(card) {
+        if (!card) return;
+        clearTimeout(saveTimers.get(card));
+        var timer = setTimeout(function () { updateEntryFromCard(card); }, 400);
+        saveTimers.set(card, timer);
+      }
+      function setEntryStatus(entry, status) {
+        if (!entry) return;
+        entry.status = status;
+        saveState();
+        renderList();
+      }
+      function applyRemoteStatuses(statusItems) {
+        if (!Array.isArray(statusItems) || !statusItems.length) return;
+        var changed = false;
+        statusItems.forEach(function (remote) {
+          var code = String(remote.code || '').padStart(3, '0');
+          var id = String(remote.id || remote.invite_id || '');
+          var entry = state.entries.find(function (item) {
+            return (id && String(item.id) === id) || (code && item.code === code);
+          });
+          if (!entry) return;
+          var nextStatus = remote.status === 'completed' || remote.status === 'created' || remote.status === 'registered'
+            ? 'completed'
+            : (remote.status === 'sent' || remote.status === 'shared' ? 'sent' : entry.status);
+          if (nextStatus !== entry.status) {
+            entry.status = nextStatus;
+            changed = true;
+          }
+        });
+        if (changed) {
+          saveState();
+          renderList();
+        }
+      }
+      function checkRemoteStatuses() {
+        var page = document.querySelector('[data-kara-quick-page]');
+        var url = page ? page.getAttribute('data-quick-status-url') : '';
+        if (!url || !state.entries.length) return;
+        var codes = state.entries.map(function (entry) { return entry.code; }).join(',');
+        fetch(url + (url.indexOf('?') === -1 ? '?' : '&') + 'codes=' + encodeURIComponent(codes), {
+          credentials: 'same-origin',
+          headers: { Accept: 'application/json' }
+        }).then(function (response) {
+          return response.json().catch(function () { return {}; });
+        }).then(function (payload) {
+          var data = payload && payload.data ? payload.data : payload;
+          applyRemoteStatuses(data.statuses || data.invites || []);
+        }).catch(function () {});
+      }
+      function startStatusPolling() {
+        checkRemoteStatuses();
+        window.setInterval(checkRemoteStatuses, 10000);
+      }
+      function createEntries(count, mode, branch) {
+        if (mode === 'replace') state.entries = [];
+        var start = state.entries.length + 1;
+        for (var i = 0; i < count; i += 1) {
+          state.entries.push(createEntry(start + i, branch));
+        }
+        refreshCodes();
+        saveState();
+        renderList();
+        showToast('Đã tạo thêm ' + count + ' lời mời cho ' + branchLabel(branch) + '.');
+      }
+      function copyText(text) {
+        if (navigator.clipboard && navigator.clipboard.writeText) return navigator.clipboard.writeText(text);
+        var area = document.createElement('textarea');
+        area.value = text;
+        area.setAttribute('readonly', '');
+        area.style.position = 'fixed';
+        area.style.opacity = '0';
+        document.body.appendChild(area);
+        area.select();
+        document.execCommand('copy');
+        area.remove();
+        return Promise.resolve();
+      }
+      function currentShareEntry() {
+        return state.entries.find(function (entry) { return entry.id === state.activeShareId; }) || null;
+      }
+      function buildMessage(entry) {
+        var name = entry.expectedName || 'bạn';
+        return [
+          'Xin chào ' + name + ',',
+          '',
+          'Bạn vui lòng mở link dưới đây để cập nhật hồ sơ nhân sự:',
+          entry.inviteUrl,
+          '',
+          'Mã lời mời: ' + entry.code,
+          'Chi nhánh: ' + branchLabel(entry.branch),
+          'Chức vụ: ' + roleLabel(entry.role),
+          '',
+          'Sau khi cập nhật xong, bạn gửi lại giúp mình để xác nhận nhé.'
+        ].join('\n');
+      }
+      function openShareModal(entry) {
+        if (!entry) return;
+        state.activeShareId = entry.id;
+        saveState();
+        var modal = document.querySelector('[data-quick-share-modal]');
+        if (!modal) return;
+        var qrUrl = 'https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=' + encodeURIComponent(entry.inviteUrl);
+        var avatarEl = modal.querySelector('[data-share-avatar]');
+        var nameEl = modal.querySelector('[data-share-name]');
+        var codeEl = modal.querySelector('[data-share-code]');
+        var metaEl = modal.querySelector('[data-share-meta]');
+        var qrEl = modal.querySelector('[data-share-qr]');
+        var linkEl = modal.querySelector('[data-share-link]');
+        if (avatarEl) avatarEl.innerHTML = entry.avatar ? '<img src="' + escapeHtml(entry.avatar) + '" alt="Ảnh nhân viên">' : '<i data-lucide="user-round-check"></i>';
+        if (nameEl) nameEl.textContent = entry.expectedName || 'Nhân viên mới';
+        if (codeEl) codeEl.textContent = 'Mã ' + entry.code;
+        if (metaEl) metaEl.textContent = branchLabel(entry.branch) + ' · ' + roleLabel(entry.role);
+        if (qrEl) qrEl.src = qrUrl;
+        if (linkEl) linkEl.value = entry.inviteUrl;
+        clearTimeout(shareCloseTimer);
+        modal.hidden = false;
+        modal.classList.remove('is-closing');
+        modal.classList.remove('is-open');
+        document.body.classList.add('kara-quick-modal-open');
+        refreshIcons();
+        requestAnimationFrame(function () { modal.classList.add('is-open'); });
+      }
+      function closeShareModal() {
+        var modal = document.querySelector('[data-quick-share-modal]');
+        if (!modal || modal.hidden) return;
+        clearTimeout(shareCloseTimer);
+        modal.classList.remove('is-open');
+        modal.classList.add('is-closing');
+        shareCloseTimer = setTimeout(function () {
+          modal.hidden = true;
+          modal.classList.remove('is-closing');
+          document.body.classList.remove('kara-quick-modal-open');
+        }, 240);
+      }
+      function getCurrentShareText() {
+        var entry = currentShareEntry();
+        return entry ? buildMessage(entry) : '';
+      }
+      function markEntrySent(entry) {
+        if (!entry || entry.status === 'completed') return;
+        entry.status = 'sent';
+        saveState();
+        renderList();
+      }
+      function downloadFileFromUrl(url, filename) {
+        if (!url) return Promise.resolve();
+        return fetch(url, { mode: 'cors' }).then(function (response) {
+          if (!response.ok) throw new Error('Download failed');
+          return response.blob();
+        }).then(function (blob) {
+          var objectUrl = URL.createObjectURL(blob);
+          var link = document.createElement('a');
+          link.href = objectUrl;
+          link.download = filename || 'qr-loi-moi.png';
+          document.body.appendChild(link);
+          link.click();
+          link.remove();
+          setTimeout(function () { URL.revokeObjectURL(objectUrl); }, 1200);
+        }).catch(function () {
+          window.open(url, '_blank', 'noopener,noreferrer');
+        });
+      }
+      function handleAvatar(card, input) {
+        if (!card || !input || !input.files || !input.files[0]) return;
+        var file = input.files[0];
+        if (!file.type || file.type.indexOf('image/') !== 0) return;
+        var reader = new FileReader();
+        reader.onload = function () {
+          var entry = state.entries.find(function (item) { return item.id === card.dataset.entryId; });
+          if (!entry) return;
+          entry.avatar = String(reader.result || '');
+          saveState();
+          renderList();
+        };
+        reader.readAsDataURL(file);
+      }
+      function fillBranchSelect() {
+        var select = document.querySelector('[data-quick-branch]');
+        if (!select) return;
+        select.innerHTML = optionHtml(BRANCH_OPTIONS, state.defaultBranch);
+        select.value = state.defaultBranch;
+      }
+      function bindEvents() {
+        var createForm = document.querySelector('[data-quick-create-form]');
+        var countInput = document.querySelector('[data-quick-count]');
+        var branchSelect = document.querySelector('[data-quick-branch]');
+        if (branchSelect) {
+          branchSelect.addEventListener('change', function () {
+            state.defaultBranch = branchSelect.value || BRANCH_OPTIONS[0].value;
+            saveState();
+          });
+        }
+        if (createForm && countInput) {
+          createForm.addEventListener('submit', function (event) {
+            event.preventDefault();
+            var mode = 'append';
+            var count = clampCount(countInput.value);
+            var branch = branchSelect ? branchSelect.value : state.defaultBranch;
+            state.defaultBranch = branch;
+            countInput.value = String(count);
+            createEntries(count, mode, branch);
+          });
+        }
+        var list = document.querySelector('[data-quick-list]');
+        if (list) {
+          list.addEventListener('input', function (event) {
+            var card = event.target.closest('[data-entry-card]');
+            if (event.target.matches('[data-entry-name]')) debounceSave(card);
+          });
+          list.addEventListener('change', function (event) {
+            var card = event.target.closest('[data-entry-card]');
+            if (event.target.matches('[data-entry-role]')) updateEntryFromCard(card);
+            if (event.target.matches('[data-entry-avatar]')) handleAvatar(card, event.target);
+          });
+          list.addEventListener('blur', function (event) {
+            if (!event.target.matches('[data-entry-name]')) return;
+            var card = event.target.closest('[data-entry-card]');
+            clearTimeout(saveTimers.get(card));
+            updateEntryFromCard(card);
+          }, true);
+          list.addEventListener('keydown', function (event) {
+            if (!event.target.matches('[data-entry-name]') || event.key !== 'Enter') return;
+            event.preventDefault();
+            event.target.blur();
+          });
+          list.addEventListener('click', function (event) {
+            var card = event.target.closest('[data-entry-card]');
+            if (!card) return;
+            var entry = updateEntryFromCard(card);
+            if (event.target.closest('[data-entry-delete]')) {
+              state.entries = state.entries.filter(function (item) { return item.id !== card.dataset.entryId; });
+              refreshCodes();
+              saveState();
+              renderList();
+              showToast('Đã xóa lời mời.');
+              return;
+            }
+            if (event.target.closest('[data-entry-share]')) {
+              openShareModal(entry);
+            }
+          });
+        }
+        var searchTrigger = document.querySelector('[data-quick-search-trigger]');
+        var searchPanel = document.querySelector('[data-quick-search]');
+        var searchInput = document.querySelector('[data-quick-search-input]');
+        if (searchTrigger && searchPanel && searchInput) {
+          searchTrigger.addEventListener('click', function () {
+            searchPanel.hidden = !searchPanel.hidden;
+            if (!searchPanel.hidden) searchInput.focus();
+            if (searchPanel.hidden) {
+              searchInput.value = '';
+              applySearch();
+            }
+          });
+          searchInput.addEventListener('input', applySearch);
+        }
+        document.querySelectorAll('[data-quick-share-close]').forEach(function (btn) {
+          btn.addEventListener('click', closeShareModal);
+        });
+        var copyLinkBtn = document.querySelector('[data-share-copy-link]');
+        if (copyLinkBtn) {
+          copyLinkBtn.addEventListener('click', function () {
+            var entry = currentShareEntry();
+            if (!entry) return;
+            copyText(entry.inviteUrl).then(function () { showToast('Đã copy link lời mời ' + entry.code + '.'); });
+          });
+        }
+        var copyMessageBtn = document.querySelector('[data-share-copy-message]');
+        if (copyMessageBtn) {
+          copyMessageBtn.addEventListener('click', function () {
+            copyText(getCurrentShareText()).then(function () { markEntrySent(currentShareEntry()); showToast('Đã copy tin nhắn chia sẻ.'); });
+          });
+        }
+        var sendBtn = document.querySelector('[data-share-send]');
+        if (sendBtn) {
+          sendBtn.addEventListener('click', function () {
+            var entry = currentShareEntry();
+            var text = getCurrentShareText();
+            if (navigator.share && entry) {
+              navigator.share({ title: 'Lời mời cập nhật hồ sơ ' + entry.code, text: text, url: entry.inviteUrl }).then(function () { markEntrySent(entry); }).catch(function () {});
+              return;
+            }
+            copyText(text).then(function () { markEntrySent(entry); showToast('Đã copy tin nhắn để bạn dán gửi nhanh.'); });
+          });
+        }
+        var downloadBtn = document.querySelector('[data-share-download-qr]');
+        if (downloadBtn) {
+          downloadBtn.addEventListener('click', function () {
+            var entry = currentShareEntry();
+            var qr = document.querySelector('[data-share-qr]');
+            if (!entry || !qr) return;
+            downloadFileFromUrl(qr.src, 'qr-loi-moi-' + entry.code + '.png');
+          });
+        }
+        document.addEventListener('keydown', function (event) {
+          if (event.key === 'Escape') closeShareModal();
+        });
+      }
+      function init() {
+        readState();
+        fillBranchSelect();
+        renderList();
+        bindEvents();
+        startStatusPolling();
+        refreshIcons();
+      }
+      if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', init);
+      else init();
+    })();
+  </script>
+</body>
+</html>

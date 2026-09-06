@@ -1,0 +1,317 @@
+<?php
+
+namespace App\Http\Controllers;
+
+use App\Models\Attendance;
+use App\Models\Branch;
+use App\Models\Setting;
+use App\Models\ShiftAssignment;
+use App\Models\User;
+use Carbon\Carbon;
+use Carbon\CarbonPeriod;
+use Illuminate\Http\Request;
+
+class AttendanceStatisticController extends Controller
+{
+    public function index(Request $request)
+    {
+        $viewer = auth()->user();
+        $month = $request->input('month', now()->format('Y-m'));
+        $start = Carbon::createFromFormat('Y-m', $month)->startOfMonth();
+        $end = $start->copy()->endOfMonth();
+        $branchId = $request->input('branch_id');
+        $search = trim((string) $request->input('search', ''));
+        $searchId = ctype_digit($search) ? (int) ltrim($search, '0') : null;
+
+        if ($viewer->role === 'manager') {
+            $branchId = $viewer->branch_id;
+        }
+
+        $branches = Branch::orderBy('name')->get();
+
+        $users = User::with('branch')
+            ->whereIn('role', ['staff', 'manager', 'cashier'])
+            ->when($branchId, fn ($query) => $query->where('branch_id', $branchId))
+            ->when($search !== '', function ($query) use ($search, $searchId) {
+                $query->where(function ($q) use ($search, $searchId) {
+                    $q->where('name', 'like', "%{$search}%")
+                        ->orWhere('email', 'like', "%{$search}%");
+
+                    if ($searchId !== null) {
+                        $q->orWhere('id', $searchId);
+                    }
+                });
+            })
+            ->orderBy('name')
+            ->get();
+
+        $userIds = $users->pluck('id');
+
+        $attendances = Attendance::with('shift')
+            ->whereIn('user_id', $userIds)
+            ->forWorkDateBetween($start, $end)
+            ->get()
+            ->groupBy(fn ($attendance) => $attendance->user_id . '|' . ($attendance->work_date?->toDateString() ?? $attendance->checkin_at->toDateString()));
+
+        $assignments = ShiftAssignment::with('shift')
+            ->whereIn('user_id', $userIds)
+            ->where(function ($query) use ($start, $end) {
+                $query->whereNull('work_date')
+                    ->orWhereBetween('work_date', [$start->toDateString(), $end->toDateString()]);
+            })
+            ->get()
+            ->groupBy('user_id');
+
+        $days = collect(CarbonPeriod::create($start, $end))->values();
+
+        $rows = $users->map(function (User $user) use ($days, $attendances, $assignments) {
+            $cells = $days->mapWithKeys(function (Carbon $day) use ($user, $attendances, $assignments) {
+                $attendanceKey = $user->id . '|' . $day->toDateString();
+                $attendance = $attendances->get($attendanceKey)?->sortByDesc('created_at')->first();
+                $assignment = $this->effectiveAssignmentForDay(
+                    $assignments->get($user->id, collect()),
+                    $day
+                );
+
+                return [$day->toDateString() => $this->makeCell($attendance, $assignment, $day)];
+            });
+
+            return [
+                'user' => $user,
+                'cells' => $cells,
+            ];
+        });
+
+        $summary = [
+            'totalEmployees' => $users->count(),
+            'totalOvertimeHours' => round($rows->sum(fn ($row) => $row['cells']->sum('overtime_hours')), 1),
+            'lateCount' => $rows->sum(fn ($row) => $row['cells']->where('late_minutes', '>', 0)->count()),
+            'absentCount' => $rows->sum(fn ($row) => $row['cells']->where('status', 'absent')->count()),
+        ];
+
+        return view('attendance_statistics.index', compact(
+            'branches',
+            'branchId',
+            'days',
+            'month',
+            'rows',
+            'search',
+            'summary'
+        ));
+    }
+
+    private function effectiveAssignmentForDay($assignments, Carbon $day): ?ShiftAssignment
+    {
+        $dateAssignment = $assignments
+            ->filter(fn (ShiftAssignment $assignment) => $assignment->work_date?->toDateString() === $day->toDateString())
+            ->sortByDesc('updated_at')
+            ->first();
+
+        if ($dateAssignment) {
+            return $dateAssignment;
+        }
+
+        return $assignments
+            ->filter(fn (ShiftAssignment $assignment) => !$assignment->work_date)
+            ->filter(fn (ShiftAssignment $assignment) => $assignment->created_at->lessThanOrEqualTo($day->copy()->endOfDay()))
+            ->sortByDesc('created_at')
+            ->first();
+    }
+
+    private function makeCell(?Attendance $attendance, ?ShiftAssignment $assignment, Carbon $day): array
+    {
+        if (!$attendance && $day->isAfter(today())) {
+            return [
+                'status' => 'upcoming',
+                'label' => 'Sắp đến',
+                'shift' => $assignment?->shift?->name,
+                'time' => $assignment?->shift ? $this->shiftTimeText($assignment->shift, $day) : 'Chưa đến ngày',
+                'work_units' => 0,
+                'overtime_hours' => 0,
+                'late_minutes' => 0,
+                'note' => null,
+            ];
+        }
+
+        if (!$attendance && !$assignment) {
+            return [
+                'status' => 'off',
+                'label' => 'Nghi',
+                'shift' => null,
+                'time' => 'Không có ca làm',
+                'work_units' => 0,
+                'overtime_hours' => 0,
+                'late_minutes' => 0,
+                'note' => null,
+            ];
+        }
+
+        if (!$attendance && $assignment) {
+            return [
+                'status' => 'absent',
+                'label' => 'Vắng',
+                'shift' => $assignment->shift?->name,
+                'time' => 'Không chấm công',
+                'work_units' => 0,
+                'overtime_hours' => 0,
+                'late_minutes' => 0,
+                'note' => 'Có ca nhưng không có dữ liệu',
+            ];
+        }
+
+        $shift = $attendance->shift ?? $assignment?->shift;
+        $missingCheckout = !$attendance->checkout_at;
+        $workedMinutes = $attendance->checkout_at
+            ? $attendance->checkin_at->diffInMinutes($attendance->checkout_at)
+            : 0;
+        $requiredMinutes = $shift ? $this->shiftRequiredMinutes($shift, $day) : 480;
+        $workUnits = $attendance->work_day !== null
+            ? round((float) $attendance->work_day, 2)
+            : ($workedMinutes > 0 ? round(min($workedMinutes / max($requiredMinutes, 1), 1), 1) : 0);
+        $overtimeMinutes = 0;
+        $lateMinutes = 0;
+
+        if ($shift && $attendance->checkout_at) {
+            $shiftEnd = $this->shiftDateTimeFor($shift, $day, 'end_at');
+
+            if ($attendance->checkout_at->greaterThan($shiftEnd)) {
+                $overtimeMinutes = $shiftEnd->diffInMinutes($attendance->checkout_at);
+            }
+        } else {
+            $overtimeMinutes = (int) ($attendance->overtime_minutes ?? 0);
+        }
+
+        if ($shift) {
+            $allowedLateTime = $this->shiftDateTimeFor($shift, $day, 'start_at')
+                ->addMinutes((int) ($shift->late_after_minutes ?? 0));
+
+            if ($attendance->checkin_at && $attendance->checkin_at->greaterThan($allowedLateTime)) {
+                $lateMinutes = $allowedLateTime->diffInMinutes($attendance->checkin_at);
+            }
+        } else {
+            $lateMinutes = (int) ($attendance->late_minutes ?? 0);
+        }
+
+        $overtimeHours = round($overtimeMinutes / 60, 1);
+        $status = 'complete';
+        $label = 'Đủ công';
+        $workLabel = 'Đủ công';
+        $note = $attendance->note;
+
+        $isFullWork = $workUnits >= 1;
+
+        if (!$isFullWork) {
+            $workLabel = 'Thiếu công';
+        }
+
+        if ($missingCheckout && $attendance->status !== 'missing_checkout' && $this->isOpenAttendanceStillActive($attendance)) {
+            $status = 'working';
+            $label = 'Đang làm';
+            $workLabel = 'Chưa đủ công';
+            $note = 'Chưa checkout';
+        } elseif ($missingCheckout || $attendance->status === 'missing_checkout') {
+            $status = 'missing';
+            $label = 'Thiếu checkout';
+            $workLabel = 'Thiếu công';
+            $note = 'Không có checkout';
+        } elseif ($isFullWork) {
+            $status = 'complete';
+            $label = 'Đủ công';
+            $workLabel = 'Đủ công';
+        } elseif (!$isFullWork) {
+            $status = 'partial';
+            $label = 'Thiếu công';
+        }
+
+        return [
+            'status' => $status,
+            'label' => $label,
+            'work_label' => $workLabel,
+            'shift' => $shift?->name,
+            'time' => sprintf(
+                '%s - %s',
+                $attendance->checkin_at?->format('H:i') ?? '--:--',
+                $attendance->checkout_at?->format('H:i') ?? '--:--'
+            ),
+            'work_units' => $workUnits,
+            'overtime_hours' => $overtimeHours,
+            'late_minutes' => $lateMinutes,
+            'note' => $note,
+        ];
+    }
+
+    private function shiftTimeText($shift, Carbon $day): string
+    {
+        return sprintf(
+            '%s - %s',
+            $this->shiftDateTimeFor($shift, $day, 'start_at')->format('H:i'),
+            $this->shiftDateTimeFor($shift, $day, 'end_at')->format('H:i')
+        );
+    }
+
+    private function shiftRequiredMinutes($shift, Carbon $day): int
+    {
+        return $this->shiftDateTimeFor($shift, $day, 'start_at')
+            ->diffInMinutes($this->shiftDateTimeFor($shift, $day, 'end_at'));
+    }
+
+    private function shiftDateTimeFor($shift, Carbon $day, string $field): Carbon
+    {
+        $time = Carbon::parse($shift->{$field});
+
+        $dateTime = $day->copy()->setTime(
+            (int) $time->format('H'),
+            (int) $time->format('i'),
+            (int) $time->format('s')
+        );
+
+        if ($field === 'end_at') {
+            $start = Carbon::parse($shift->start_at);
+            $end = Carbon::parse($shift->end_at);
+
+            if ($end->format('H:i:s') <= $start->format('H:i:s')) {
+                $dateTime->addDay();
+            }
+        }
+
+        return $dateTime;
+    }
+
+    private function isOpenAttendanceStillActive(Attendance $attendance): bool
+    {
+        if ($attendance->checkout_at || !$attendance->checkin_at) {
+            return false;
+        }
+
+        if ($attendance->checkin_at->isToday()) {
+            return true;
+        }
+
+        $workDate = $attendance->work_date
+            ? Carbon::parse($attendance->work_date)
+            : $attendance->checkin_at->copy();
+        $cutoff = $this->overnightCutoffTime();
+        $limit = $workDate->copy()
+            ->addDay()
+            ->setTime($cutoff['hour'], $cutoff['minute']);
+
+        return now()->lessThanOrEqualTo($limit);
+    }
+
+    private function overnightCutoffTime(): array
+    {
+        $value = (string) Setting::getValue('overnight_cutoff_time', '08:50');
+
+        if (!preg_match('/^\d{2}:\d{2}$/', $value)) {
+            return ['hour' => 8, 'minute' => 50];
+        }
+
+        [$hour, $minute] = array_map('intval', explode(':', $value));
+
+        if ($hour < 0 || $hour > 23 || $minute < 0 || $minute > 59) {
+            return ['hour' => 8, 'minute' => 50];
+        }
+
+        return ['hour' => $hour, 'minute' => $minute];
+    }
+}

@@ -1,0 +1,845 @@
+<?php
+
+namespace App\Services;
+
+use App\Models\Attendance;
+use App\Models\AttendanceSupplementRequest;
+use App\Models\LeaveRequest;
+use App\Models\Setting;
+use App\Models\Shift;
+use App\Models\ShiftAssignment;
+use App\Models\User;
+use Carbon\Carbon;
+use Illuminate\Support\Collection;
+
+class AttendanceStatusService
+{
+    public function resolveDailyStatus(
+        User $user,
+        Carbon $workDate,
+        ?Attendance $attendance = null,
+        ?ShiftAssignment $assignment = null,
+        ?LeaveRequest $leave = null,
+        ?AttendanceSupplementRequest $supplement = null
+    ): array {
+        if ($user->role === 'admin') {
+            return $this->status(
+                'unknown',
+                'Không áp dụng',
+                'Không áp dụng dashboard nghỉ cá nhân cho admin.'
+            );
+        }
+
+        $shift = $attendance?->shift ?? $assignment?->shift;
+
+        if ($attendance) {
+            return $this->attendanceStatus(
+                $attendance,
+                $workDate,
+                $shift,
+                $leave,
+                $supplement
+            );
+        }
+
+        if ($leave) {
+            return $this->status(
+                key: 'leave_approved',
+                label: 'Nghỉ có phép',
+                subtitle: 'Đơn nghỉ của bạn đã được duyệt',
+                badges: [$this->leaveTypeLabel($leave->leave_type)]
+            );
+        }
+
+        if (!$assignment || !$shift) {
+            return $this->status(
+                'no_shift',
+                'Không có ca',
+                'Không có lịch làm việc trong ngày này.'
+            );
+        }
+
+        if ($this->canMarkAbsentWithoutLeave($workDate, $shift)) {
+            return $this->status(
+                key: 'absent_without_leave',
+                label: 'Nghỉ không phép',
+                subtitle: 'Có ca làm nhưng chưa chấm công và chưa có đơn nghỉ được duyệt'
+            );
+        }
+
+        return $this->status(
+            key: 'not_checked_in_yet',
+            label: 'Chưa chấm công',
+            subtitle: 'Vui lòng quét QR để ghi nhận ca làm'
+        );
+    }
+
+    private function attendanceStatus(
+        Attendance $attendance,
+        Carbon $workDate,
+        ?Shift $shift,
+        ?LeaveRequest $leave,
+        ?AttendanceSupplementRequest $supplement
+    ): array {
+        $attendance->loadMissing('segments');
+        $shift?->loadMissing('segments');
+
+        $badges = $this->baseBadges($leave, $supplement);
+        $segments = $attendance->segments ?? collect();
+
+        /*
+         * Phải kiểm tra thiếu giờ vào trước trạng thái
+         * "Chờ đoạn tiếp theo". Một đoạn có checkout nhưng
+         * không có checkin không được xem là đã hoàn thành.
+         */
+        $missingCheckinSegments = $segments
+            ->filter(
+                fn ($segment) =>
+                    !$segment->checkin_at
+                    && (bool) $segment->checkout_at
+            )
+            ->sortBy('segment_order')
+            ->values();
+
+        if (
+            (string) $attendance->status === 'missing_checkin'
+            || $missingCheckinSegments->isNotEmpty()
+            || (
+                !$attendance->checkin_at
+                && (bool) $attendance->checkout_at
+            )
+        ) {
+            $segmentOrders = $missingCheckinSegments
+                ->pluck('segment_order')
+                ->filter()
+                ->map(fn ($order) => (int) $order)
+                ->values()
+                ->all();
+
+            if ($segmentOrders !== []) {
+                $badges[] = 'Thiếu giờ vào đoạn '
+                    . implode(', ', $segmentOrders);
+            }
+
+            return $this->status(
+                key: 'missing_checkin',
+                label: 'Thiếu giờ vào',
+                subtitle: $segmentOrders !== []
+                    ? 'Đã ghi nhận giờ ra nhưng thiếu giờ vào ở đoạn '
+                        . implode(', ', $segmentOrders)
+                    : 'Đã ghi nhận giờ ra nhưng chưa có giờ vào',
+                workStatus: 'missing',
+                workLabel: 'Thiếu giờ vào, chưa tính đủ công',
+                badges: $badges
+            );
+        }
+
+        /*
+         * Chặn an toàn cho bản ghi chưa có dữ liệu giờ vào,
+         * giờ ra và cũng chưa có segment hợp lệ.
+         */
+        if (
+            !$attendance->checkin_at
+            && !$attendance->checkout_at
+            && $segments->isEmpty()
+        ) {
+            return $this->status(
+                key: 'pending',
+                label: 'Chưa chấm công',
+                subtitle: 'Chưa có dữ liệu giờ vào và giờ ra',
+                workStatus: 'pending',
+                workLabel: 'Chưa chấm công',
+                badges: $badges
+            );
+        }
+
+        $plannedSegmentCount = $shift?->segments?->count() ?? 0;
+
+        /*
+         * Chỉ xem là đang chờ đoạn tiếp theo khi tất cả đoạn
+         * đã ghi nhận đều có đủ cả giờ vào lẫn giờ ra.
+         */
+        if (
+            $plannedSegmentCount >= 2
+            && $segments->isNotEmpty()
+            && $segments->count() < $plannedSegmentCount
+            && $segments->every(
+                fn ($segment) =>
+                    (bool) $segment->checkin_at
+                    && (bool) $segment->checkout_at
+            )
+        ) {
+            return $this->status(
+                key: 'pending',
+                label: 'Chờ đoạn tiếp theo',
+                subtitle: 'Đoạn trước đã hoàn tất, vui lòng chấm công khi bắt đầu đoạn tiếp theo.',
+                workStatus: 'pending',
+                workLabel: 'Chờ đoạn tiếp theo',
+                badges: $badges
+            );
+        }
+
+        $openSegments = $segments
+            ->filter(
+                fn ($segment) =>
+                    (bool) $segment->checkin_at
+                    && !$segment->checkout_at
+            )
+            ->sortBy('segment_order')
+            ->values();
+
+        /*
+         * Với ca chia đoạn, segment là nguồn dữ liệu chính.
+         * Không để parent checkout_at làm che mất một đoạn
+         * vẫn còn thiếu checkout.
+         */
+        if ($openSegments->isNotEmpty()) {
+            $orders = $openSegments
+                ->pluck('segment_order')
+                ->filter()
+                ->map(fn ($order) => (int) $order)
+                ->values()
+                ->all();
+
+            if ($orders !== []) {
+                $badges[] = 'Thiếu giờ ra đoạn '
+                    . implode(', ', $orders);
+            }
+
+            return $this->status(
+                key: 'missing_checkout',
+                label: 'Thiếu checkout',
+                subtitle: $orders !== []
+                    ? 'Có giờ vào nhưng chưa có giờ ra ở đoạn '
+                        . implode(', ', $orders)
+                    : 'Có giờ vào nhưng chưa có giờ ra',
+                workStatus: 'missing',
+                workLabel: 'Thiếu checkout',
+                badges: $badges
+            );
+        }
+
+        $checkout = $attendance->checkout_at
+            ? Carbon::parse($attendance->checkout_at)
+            : null;
+
+        $checkin = $attendance->checkin_at
+            ? Carbon::parse($attendance->checkin_at)
+            : null;
+
+        if (!$checkout) {
+            return $this->status(
+                key: 'missing_checkout',
+                label: 'Thiếu checkout',
+                subtitle: 'Có checkin nhưng chưa có checkout',
+                workStatus: 'missing',
+                workLabel: 'Thiếu checkout',
+                badges: $badges
+            );
+        }
+
+        $workedMinutes = $this->workedMinutes(
+            $attendance,
+            $checkin,
+            $checkout,
+            $segments
+        );
+
+        $requiredMinutes = $shift
+            ? $this->shiftRequiredMinutes($shift, $workDate)
+            : 480;
+
+        $lateMinutes = $this->lateMinutes(
+            $attendance,
+            $shift,
+            $workDate
+        );
+
+        $isFullWork = $attendance->work_day !== null
+            ? (float) $attendance->work_day >= 1
+            : $workedMinutes >= $requiredMinutes;
+
+        if ((int) ($attendance->overtime_minutes ?? 0) > 0) {
+            $badges[] = 'Tăng ca '
+                . round(
+                    (int) $attendance->overtime_minutes / 60,
+                    1
+                )
+                . 'h';
+        }
+
+        if ($lateMinutes > 0) {
+            return $this->status(
+                key: 'late',
+                label: 'Đi trễ',
+                subtitle: $isFullWork
+                    ? 'Đã đủ công nhưng vào trễ'
+                    : 'Vào trễ và chưa đủ công',
+                workStatus: $isFullWork ? 'complete' : 'missing',
+                workLabel: $isFullWork
+                    ? 'Đã đủ công nhưng vào trễ'
+                    : 'Đi trễ, thiếu công',
+                badges: $badges
+            );
+        }
+
+        if (
+            $shift
+            && $this->isEarlyCheckout(
+                $attendance,
+                $shift,
+                $workDate
+            )
+        ) {
+            return $this->status(
+                key: 'early_leave',
+                label: 'Về sớm',
+                subtitle: 'Checkout trước giờ kết thúc ca',
+                workStatus: $isFullWork ? 'complete' : 'missing',
+                workLabel: $isFullWork
+                    ? 'Về sớm'
+                    : 'Về sớm, thiếu công',
+                badges: $badges
+            );
+        }
+
+        if (!$isFullWork) {
+            return $this->status(
+                key: 'insufficient_work',
+                label: 'Thiếu công',
+                subtitle: 'Tổng công chưa đủ theo ca',
+                workStatus: 'missing',
+                workLabel: 'Thiếu công',
+                badges: $badges
+            );
+        }
+
+        return $this->status(
+            key: 'full_day',
+            label: 'Đủ công',
+            subtitle: 'Checkin đúng giờ và đủ công',
+            workStatus: 'complete',
+            workLabel: 'Đủ công / Đúng giờ',
+            badges: $badges
+        );
+    }
+
+    private function baseBadges(
+        ?LeaveRequest $leave,
+        ?AttendanceSupplementRequest $supplement
+    ): array {
+        $badges = [];
+
+        if ($leave) {
+            $badges[] = $this->leaveTypeLabel($leave->leave_type);
+        }
+
+        if ($supplement) {
+            $badges[] = 'Đã duyệt đơn';
+        }
+
+        return $badges;
+    }
+
+    private function workedMinutes(
+        Attendance $attendance,
+        ?Carbon $checkin,
+        Carbon $checkout,
+        Collection $segments
+    ): int {
+        if ($segments->isNotEmpty()) {
+            return (int) $segments->sum(function ($segment) {
+                if (!$segment->checkin_at || !$segment->checkout_at) {
+                    return 0;
+                }
+
+                $storedWorkedMinutes = (int) (
+                    $segment->worked_minutes ?? 0
+                );
+
+                if ($storedWorkedMinutes > 0) {
+                    return $storedWorkedMinutes;
+                }
+
+                return Carbon::parse($segment->checkin_at)
+                    ->diffInMinutes(
+                        Carbon::parse($segment->checkout_at)
+                    );
+            });
+        }
+
+        $storedWorkedMinutes = (int) (
+            $attendance->worked_minutes ?? 0
+        );
+
+        if ($storedWorkedMinutes > 0) {
+            return $storedWorkedMinutes;
+        }
+
+        return $checkin
+            ? $checkin->diffInMinutes($checkout)
+            : 0;
+    }
+
+    private function status(
+        string $key,
+        string $label,
+        string $subtitle,
+        string $workStatus = 'none',
+        ?string $workLabel = null,
+        array $badges = []
+    ): array {
+        return [
+            'key' => $key,
+            'status' => $key,
+            'label' => $label,
+            'subtitle' => $subtitle,
+            'color' => $this->colorFor($key),
+            'classes' => $this->classesFor($key),
+            'icon' => $this->iconFor($key),
+            'work_status' => $workStatus,
+            'work_label' => $workLabel ?? $label,
+            'badges' => array_values(array_filter($badges)),
+        ];
+    }
+
+    private function canMarkAbsentWithoutLeave(
+        Carbon $workDate,
+        Shift $shift
+    ): bool {
+        $today = today();
+
+        if (
+            $workDate->lt($today)
+            && !$this->isOvernightDeadlineStillOpen(
+                $workDate,
+                $shift
+            )
+        ) {
+            return true;
+        }
+
+        if ($workDate->gt($today)) {
+            return false;
+        }
+
+        return now()->greaterThan(
+            $this->checkoutDeadline($workDate, $shift)
+        );
+    }
+
+    private function isOvernightDeadlineStillOpen(
+        Carbon $workDate,
+        Shift $shift
+    ): bool {
+        return $this->isOvernightShift($shift)
+            && now()->lessThanOrEqualTo(
+                $this->checkoutDeadline($workDate, $shift)
+            );
+    }
+
+    private function checkoutDeadline(
+        Carbon $workDate,
+        Shift $shift
+    ): Carbon {
+        if (!$this->isOvernightShift($shift)) {
+            return $this->scheduledShiftEnd($shift, $workDate);
+        }
+
+        $cutoff = $this->overnightCutoffTime();
+
+        $configuredCutoff = $workDate
+            ->copy()
+            ->addDay()
+            ->setTime(
+                $cutoff['hour'],
+                $cutoff['minute']
+            );
+
+        $scheduledEnd = $this->scheduledShiftEnd(
+            $shift,
+            $workDate
+        );
+
+        return $configuredCutoff->greaterThan($scheduledEnd)
+            ? $configuredCutoff
+            : $scheduledEnd;
+    }
+
+    private function lateMinutes(
+        Attendance $attendance,
+        ?Shift $shift,
+        Carbon $workDate
+    ): int {
+        $lateMinutes = (int) (
+            $attendance->late_minutes ?? 0
+        );
+
+        if (!$shift || !$attendance->checkin_at) {
+            return $lateMinutes;
+        }
+
+        $attendanceWorkDate = $attendance->work_date
+            ? Carbon::parse($attendance->work_date)
+            : $workDate;
+
+        $allowedLateTime = $this
+            ->scheduledShiftStart(
+                $shift,
+                $attendanceWorkDate
+            )
+            ->addMinutes(
+                (int) ($shift->late_after_minutes ?? 0)
+            );
+
+        $checkin = Carbon::parse($attendance->checkin_at);
+
+        if ($checkin->greaterThan($allowedLateTime)) {
+            return $allowedLateTime->diffInMinutes($checkin);
+        }
+
+        /*
+         * Giá trị lưu có thể cũ sau khi quản lý sửa công.
+         * Giờ vào thực tế là nguồn dữ liệu ưu tiên.
+         */
+        return 0;
+    }
+
+    private function isEarlyCheckout(
+        Attendance $attendance,
+        Shift $shift,
+        Carbon $workDate
+    ): bool {
+        if (!$attendance->checkout_at) {
+            return false;
+        }
+
+        $attendanceWorkDate = $attendance->work_date
+            ? Carbon::parse($attendance->work_date)
+            : $workDate;
+
+        return Carbon::parse($attendance->checkout_at)
+            ->lessThan(
+                $this->scheduledShiftEnd(
+                    $shift,
+                    $attendanceWorkDate
+                )
+            );
+    }
+
+    private function shiftRequiredMinutes(
+        Shift $shift,
+        Carbon $workDate
+    ): int {
+        $shift->loadMissing('segments');
+
+        if ($shift->segments->isNotEmpty()) {
+            return max(
+                1,
+                (int) $this->absoluteSegmentWindows(
+                    $shift,
+                    $workDate
+                )->sum(
+                    fn (array $window) =>
+                        $window['start_at']
+                            ->diffInMinutes(
+                                $window['end_at']
+                            )
+                )
+            );
+        }
+
+        return max(
+            1,
+            $this->scheduledShiftStart($shift, $workDate)
+                ->diffInMinutes(
+                    $this->scheduledShiftEnd(
+                        $shift,
+                        $workDate
+                    )
+                )
+        );
+    }
+
+    private function scheduledShiftStart(
+        Shift $shift,
+        Carbon $workDate
+    ): Carbon {
+        $shift->loadMissing('segments');
+
+        if ($shift->segments->isNotEmpty()) {
+            $first = $this->absoluteSegmentWindows(
+                $shift,
+                $workDate
+            )->first();
+
+            if ($first) {
+                return $first['start_at']->copy();
+            }
+        }
+
+        return $this->shiftDateTimeFor(
+            $shift,
+            $workDate,
+            'start_at'
+        );
+    }
+
+    private function scheduledShiftEnd(
+        Shift $shift,
+        Carbon $workDate
+    ): Carbon {
+        $shift->loadMissing('segments');
+
+        if ($shift->segments->isNotEmpty()) {
+            $last = $this->absoluteSegmentWindows(
+                $shift,
+                $workDate
+            )->last();
+
+            if ($last) {
+                return $last['end_at']->copy();
+            }
+        }
+
+        return $this->shiftDateTimeFor(
+            $shift,
+            $workDate,
+            'end_at'
+        );
+    }
+
+    /**
+     * Chuyển giờ của các đoạn thành datetime tuyệt đối.
+     *
+     * Ví dụ:
+     * - đoạn 1: 16:00 ngày công → 22:00 ngày công
+     * - đoạn 2: 23:00 ngày công → 06:00 ngày hôm sau
+     */
+    private function absoluteSegmentWindows(
+        Shift $shift,
+        Carbon $workDate
+    ): Collection {
+        $shift->loadMissing('segments');
+
+        $cursor = null;
+
+        return $shift->segments
+            ->sortBy('segment_order')
+            ->values()
+            ->map(function ($segment) use (
+                $workDate,
+                &$cursor
+            ) {
+                $startTime = Carbon::parse($segment->start_at);
+                $endTime = Carbon::parse($segment->end_at);
+
+                $startAt = $workDate
+                    ->copy()
+                    ->setTime(
+                        (int) $startTime->format('H'),
+                        (int) $startTime->format('i'),
+                        (int) $startTime->format('s')
+                    );
+
+                while (
+                    $cursor
+                    && $startAt->lessThan($cursor)
+                ) {
+                    $startAt->addDay();
+                }
+
+                $endAt = $startAt
+                    ->copy()
+                    ->setTime(
+                        (int) $endTime->format('H'),
+                        (int) $endTime->format('i'),
+                        (int) $endTime->format('s')
+                    );
+
+                if ($endAt->lessThanOrEqualTo($startAt)) {
+                    $endAt->addDay();
+                }
+
+                $cursor = $endAt->copy();
+
+                return [
+                    'segment_order' =>
+                        (int) $segment->segment_order,
+                    'start_at' => $startAt,
+                    'end_at' => $endAt,
+                ];
+            });
+    }
+
+    private function shiftDateTimeFor(
+        Shift $shift,
+        Carbon $baseDate,
+        string $field
+    ): Carbon {
+        $time = Carbon::parse($shift->{$field});
+
+        $dateTime = $baseDate
+            ->copy()
+            ->setTime(
+                (int) $time->format('H'),
+                (int) $time->format('i'),
+                (int) $time->format('s')
+            );
+
+        if (
+            $field === 'end_at'
+            && $this->isOvernightShift($shift)
+        ) {
+            $dateTime->addDay();
+        }
+
+        return $dateTime;
+    }
+
+    private function isOvernightShift(Shift $shift): bool
+    {
+        $shift->loadMissing('segments');
+
+        if ($shift->segments->isNotEmpty()) {
+            $windows = $this->absoluteSegmentWindows(
+                $shift,
+                today()
+            );
+
+            $first = $windows->first();
+            $last = $windows->last();
+
+            return $first
+                && $last
+                && !$last['end_at']->isSameDay(
+                    $first['start_at']
+                );
+        }
+
+        $start = Carbon::parse($shift->start_at);
+        $end = Carbon::parse($shift->end_at);
+
+        return $end->format('H:i:s')
+            <= $start->format('H:i:s');
+    }
+
+    private function overnightCutoffTime(): array
+    {
+        $value = (string) Setting::getValue(
+            'overnight_cutoff_time',
+            '08:50'
+        );
+
+        if (!preg_match('/^\d{2}:\d{2}$/', $value)) {
+            return ['hour' => 8, 'minute' => 50];
+        }
+
+        [$hour, $minute] = array_map(
+            'intval',
+            explode(':', $value)
+        );
+
+        if (
+            $hour < 0
+            || $hour > 23
+            || $minute < 0
+            || $minute > 59
+        ) {
+            return ['hour' => 8, 'minute' => 50];
+        }
+
+        return [
+            'hour' => $hour,
+            'minute' => $minute,
+        ];
+    }
+
+    private function leaveTypeLabel(?string $type): string
+    {
+        return [
+            'nghi_phep' => 'Nghỉ phép',
+            'nghi_om' => 'Nghỉ bệnh',
+            'nghi_viec_rieng' => 'Nghỉ việc riêng',
+            'nghi_khong_luong' => 'Nghỉ không lương',
+            'khac' => 'Khác',
+        ][$type] ?? 'Nghỉ phép';
+    }
+
+    private function colorFor(string $key): string
+    {
+        return [
+            'leave_approved' => 'sky',
+            'absent_without_leave' => 'red',
+            'not_checked_in_yet' => 'slate',
+            'no_shift' => 'gray',
+            'full_day' => 'emerald',
+            'late' => 'amber',
+            'early_leave' => 'orange',
+            'missing_checkout' => 'red',
+            'missing_checkin' => 'amber',
+            'insufficient_work' => 'rose',
+            'pending' => 'slate',
+            'unknown' => 'slate',
+        ][$key] ?? 'slate';
+    }
+
+    private function classesFor(string $key): string
+    {
+        return [
+            'leave_approved' =>
+                'bg-sky-50 text-sky-700 border-sky-200',
+
+            'absent_without_leave' =>
+                'bg-red-50 text-red-700 border-red-200',
+
+            'not_checked_in_yet' =>
+                'bg-slate-50 text-slate-600 border-slate-200',
+
+            'no_shift' =>
+                'bg-gray-50 text-gray-500 border-gray-200',
+
+            'full_day' =>
+                'bg-emerald-50 text-emerald-700 border-emerald-200',
+
+            'late' =>
+                'bg-amber-50 text-amber-700 border-amber-200',
+
+            'early_leave' =>
+                'bg-orange-50 text-orange-700 border-orange-200',
+
+            'missing_checkout' =>
+                'bg-red-50 text-red-700 border-red-200',
+
+            'missing_checkin' =>
+                'bg-amber-50 text-amber-700 border-amber-200',
+
+            'insufficient_work' =>
+                'bg-rose-50 text-rose-700 border-rose-200',
+
+            'pending' =>
+                'bg-slate-50 text-slate-600 border-slate-200',
+
+            'unknown' =>
+                'bg-slate-50 text-slate-600 border-slate-200',
+        ][$key] ?? 'bg-slate-50 text-slate-600 border-slate-200';
+    }
+
+    private function iconFor(string $key): string
+    {
+        return [
+            'leave_approved' => 'calendar-check',
+            'absent_without_leave' => 'alert-triangle',
+            'not_checked_in_yet' => 'clock',
+            'no_shift' => 'calendar',
+            'full_day' => 'check-circle',
+            'late' => 'clock-alert',
+            'early_leave' => 'log-out',
+            'missing_checkout' => 'x-circle',
+            'missing_checkin' => 'log-out',
+            'insufficient_work' => 'alert-circle',
+            'pending' => 'clock',
+            'unknown' => 'circle',
+        ][$key] ?? 'circle';
+    }
+}

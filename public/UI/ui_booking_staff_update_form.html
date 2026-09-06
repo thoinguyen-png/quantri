@@ -1,0 +1,831 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Cập nhật nhân sự Booking</title>
+
+  <style>
+    :root {
+      --card: #141020;
+      --soft: rgba(255, 255, 255, 0.075);
+      --line: rgba(255, 255, 255, 0.14);
+      --line-strong: rgba(255, 255, 255, 0.22);
+      --text: #ffffff;
+      --muted: #c9bfe1;
+      --label: #f5d0fe;
+      --field: rgba(255, 255, 255, 0.105);
+      --field-focus: rgba(255, 255, 255, 0.15);
+      --pink: #d946ef;
+      --purple: #7c3aed;
+      --gold: #facc15;
+      --green: #22c55e;
+      --beam-size: 2px;
+      --beam-speed: 4s;
+    }
+
+    * {
+      box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    @property --beam-angle {
+      syntax: "<angle>";
+      inherits: false;
+      initial-value: 0deg;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif;
+      background:
+        radial-gradient(circle at 15% 0%, rgba(217, 70, 239, 0.28), transparent 28%),
+        radial-gradient(circle at 90% 8%, rgba(124, 58, 237, 0.24), transparent 30%),
+        linear-gradient(180deg, #090714, #160c26);
+      color: var(--text);
+      position: relative;
+      overflow-x: hidden;
+    }
+
+    body::before,
+    body::after {
+      content: "";
+      position: fixed;
+      width: 360px;
+      height: 360px;
+      border-radius: 999px;
+      pointer-events: none;
+      z-index: 0;
+      filter: blur(10px);
+      opacity: 0.65;
+      animation: floatingLight 7s ease-in-out infinite alternate;
+    }
+
+    body::before {
+      left: -140px;
+      top: 120px;
+      background: radial-gradient(circle, rgba(217, 70, 239, 0.32), transparent 62%);
+    }
+
+    body::after {
+      right: -150px;
+      bottom: 90px;
+      background: radial-gradient(circle, rgba(124, 58, 237, 0.34), transparent 62%);
+      animation-delay: 1.8s;
+    }
+
+    button,
+    input,
+    select {
+      font: inherit;
+    }
+
+    .page {
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      padding: 14px 10px 26px;
+      position: relative;
+      z-index: 1;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 430px;
+      overflow: hidden;
+      border-radius: 30px;
+      background: rgba(20, 16, 32, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.48);
+      position: relative;
+      isolation: isolate;
+    }
+
+    .card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: 30px;
+      padding: 1px;
+      background: linear-gradient(135deg,
+          rgba(217, 70, 239, 0.6),
+          rgba(250, 204, 21, 0.28),
+          rgba(124, 58, 237, 0.55),
+          rgba(34, 197, 94, 0.28));
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      opacity: 0.8;
+      pointer-events: none;
+      z-index: 4;
+    }
+
+    .card::after {
+      content: "";
+      position: absolute;
+      inset: -80px;
+      background:
+        radial-gradient(circle at 20% 15%, rgba(217, 70, 239, 0.18), transparent 30%),
+        radial-gradient(circle at 80% 35%, rgba(250, 204, 21, 0.12), transparent 28%),
+        radial-gradient(circle at 50% 100%, rgba(124, 58, 237, 0.22), transparent 36%);
+      opacity: 0.8;
+      pointer-events: none;
+      z-index: -1;
+      animation: cardAura 6s ease-in-out infinite alternate;
+    }
+
+    .content {
+      padding: 18px 16px 20px;
+      position: relative;
+      z-index: 2;
+    }
+
+    .form-card {
+      padding: 16px;
+      border-radius: 26px;
+      background: rgba(255, 255, 255, 0.085);
+      border: 1px solid rgba(255, 255, 255, 0.16);
+      position: relative;
+      overflow: hidden;
+      isolation: isolate;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    }
+
+    .form-card::before {
+      content: "";
+      position: absolute;
+      inset: -1px;
+      border-radius: inherit;
+      background: linear-gradient(135deg,
+          rgba(217, 70, 239, 0.22),
+          transparent 40%,
+          rgba(250, 204, 21, 0.12));
+      opacity: 0;
+      pointer-events: none;
+      transition: 0.35s ease;
+      z-index: 0;
+    }
+
+    .form-card:hover::before {
+      opacity: 1;
+    }
+
+    .form-card::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      border-radius: inherit;
+      padding: var(--beam-size);
+      background: conic-gradient(from var(--beam-angle),
+          rgba(255, 255, 255, 0.08) 0deg,
+          rgba(255, 255, 255, 0.08) 72deg,
+          rgba(217, 70, 239, 0.95) 108deg,
+          rgba(250, 204, 21, 0.95) 132deg,
+          rgba(124, 58, 237, 0.95) 156deg,
+          rgba(255, 255, 255, 0.08) 196deg,
+          rgba(255, 255, 255, 0.08) 360deg);
+      -webkit-mask:
+        linear-gradient(#000 0 0) content-box,
+        linear-gradient(#000 0 0);
+      -webkit-mask-composite: xor;
+      mask-composite: exclude;
+      pointer-events: none;
+      z-index: 3;
+      animation: borderBeam var(--beam-speed) linear infinite;
+    }
+
+    .form-inner {
+      position: relative;
+      z-index: 2;
+    }
+.eyebrow {
+      margin: 0 0 7px;
+      color: #f0abfc;
+      font-size: 13px;
+      line-height: 1.25;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      font-weight: 950;
+    }
+.desc {
+      margin: 8px 0 0;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.5;
+      font-weight: 650;
+    }
+
+    .avatar-section {
+      display: block;
+      margin-bottom: 18px;
+    }
+.avatar-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .avatar-dropzone {
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      min-height: 260px;
+      border-radius: 24px;
+      border: 2px dashed rgba(245, 208, 254, 0.55);
+      background: rgba(255, 255, 255, 0.055);
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      overflow: hidden;
+      position: relative;
+      transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        transform 0.18s ease;
+    }
+
+    .avatar-dropzone:hover {
+      background: rgba(255, 255, 255, 0.085);
+      border-color: rgba(245, 208, 254, 0.82);
+      box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.1);
+    }
+
+    .avatar-dropzone:active {
+      transform: scale(0.99);
+    }
+
+    .avatar-dropzone:focus-visible {
+      outline: 2px solid rgba(255, 255, 255, 0.78);
+      outline-offset: 4px;
+    }
+
+    .avatar-preview {
+      width: 100%;
+      height: 100%;
+      display: grid;
+      place-items: center;
+      color: rgba(255, 255, 255, 0.82);
+      background:
+        radial-gradient(circle at 30% 20%, rgba(217, 70, 239, 0.13), transparent 34%),
+        radial-gradient(circle at 72% 82%, rgba(124, 58, 237, 0.16), transparent 36%);
+    }
+
+    .avatar-preview img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: none;
+    }
+
+    .avatar-preview.has-image img {
+      display: block;
+    }
+
+    .avatar-placeholder {
+      display: inline-flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 9px;
+      color: #f5d0fe;
+    }
+
+    .avatar-placeholder svg {
+      width: 42px;
+      height: 42px;
+      color: currentColor;
+    }
+
+    .avatar-placeholder-text {
+      color: rgba(255, 255, 255, 0.82);
+      font-size: 15px;
+      line-height: 1.25;
+      font-weight: 850;
+    }
+
+    .avatar-preview.has-image .avatar-placeholder {
+      display: none;
+    }
+
+    .cccd-section {
+      display: block;
+      margin-bottom: 18px;
+    }
+
+    .cccd-input {
+      position: absolute;
+      width: 1px;
+      height: 1px;
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    .cccd-upload-box {
+      min-height: 78px;
+      padding: 14px 15px;
+      border-radius: 20px;
+      border: 1px dashed rgba(245, 208, 254, 0.55);
+      background: rgba(255, 255, 255, 0.065);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      color: rgba(255, 255, 255, 0.82);
+      cursor: pointer;
+      transition:
+        transform 0.18s ease,
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease;
+    }
+
+    .cccd-upload-box:hover {
+      background: rgba(255, 255, 255, 0.09);
+      border-color: rgba(245, 208, 254, 0.82);
+      box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.1);
+    }
+
+    .cccd-upload-box:active {
+      transform: scale(0.99);
+    }
+
+    .cccd-upload-box.is-uploaded {
+      color: #86efac;
+      background: rgba(34, 197, 94, 0.12);
+      border-color: rgba(34, 197, 94, 0.38);
+      box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.08);
+    }
+
+    .cccd-upload-icon {
+      width: 24px;
+      height: 24px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      flex: 0 0 auto;
+      color: currentColor;
+    }
+
+    .cccd-upload-icon svg {
+      width: 24px;
+      height: 24px;
+      display: block;
+    }
+
+    .cccd-upload-text {
+      font-size: 16px;
+      line-height: 1.35;
+      font-weight: 900;
+    }
+
+    .gender-options {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+
+    .gender-btn {
+      width: 100%;
+      min-height: 54px;
+      border-radius: 17px;
+      border: 1px solid var(--line-strong);
+      cursor: pointer;
+      color: rgba(255, 255, 255, 0.72);
+      background: var(--field);
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 900;
+      transition:
+        transform 0.18s ease,
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease,
+        color 0.2s ease,
+        filter 0.2s ease;
+    }
+
+    .gender-btn:hover {
+      background: var(--field-focus);
+      border-color: rgba(245, 208, 254, 0.5);
+    }
+
+    .gender-btn:active {
+      transform: scale(0.97);
+    }
+
+    .gender-btn.is-selected {
+      color: #ffffff;
+      background: linear-gradient(135deg, var(--pink), var(--purple));
+      border-color: rgba(255, 255, 255, 0.28);
+      box-shadow: 0 12px 26px rgba(217, 70, 239, 0.22);
+    }
+
+    .form-grid {
+      display: grid;
+      gap: 15px;
+    }
+
+    .field {
+      display: block;
+    }
+.input {
+      width: 100%;
+      min-height: 54px;
+      padding: 14px 15px;
+      border-radius: 17px;
+      border: 1px solid var(--line-strong);
+      outline: none;
+      background: var(--field);
+      color: #ffffff;
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 800;
+      transition:
+        background 0.2s ease,
+        border-color 0.2s ease,
+        box-shadow 0.2s ease;
+    }
+
+    .input::placeholder {
+      color: rgba(255, 255, 255, 0.42);
+      font-weight: 650;
+    }
+
+    .input:focus {
+      background: var(--field-focus);
+      border-color: rgba(245, 208, 254, 0.68);
+      box-shadow: 0 0 0 4px rgba(217, 70, 239, 0.14);
+    }
+input[type="date"] {
+      color-scheme: dark;
+    }
+
+    .form-error {
+      min-height: 20px;
+      margin: 15px 0 0;
+      color: #fecaca;
+      font-size: 14px;
+      line-height: 1.4;
+      font-weight: 750;
+    }
+
+    .form-error:empty {
+      display: none;
+    }
+
+    .submit-btn {
+      width: 100%;
+      min-height: 60px;
+      margin-top: 19px;
+      border: 0;
+      border-radius: 18px;
+      cursor: pointer;
+      color: white;
+      background: linear-gradient(135deg, var(--pink), var(--purple));
+      box-shadow: 0 14px 28px rgba(217, 70, 239, 0.24);
+      font-size: 17px;
+      line-height: 1.35;
+      font-weight: 950;
+      position: relative;
+      overflow: hidden;
+      transform: translateZ(0);
+      transition:
+        transform 0.18s ease,
+        box-shadow 0.25s ease,
+        filter 0.25s ease;
+    }
+
+    .submit-btn::before {
+      content: "";
+      position: absolute;
+      inset: -80%;
+      background: linear-gradient(120deg,
+          transparent 35%,
+          rgba(255, 255, 255, 0.32),
+          transparent 65%);
+      transform: translateX(-55%) rotate(18deg);
+      animation: buttonShine 2.6s ease-in-out infinite;
+    }
+
+    .submit-btn span {
+      position: relative;
+      z-index: 1;
+    }
+
+    .submit-btn:active {
+      transform: scale(0.97);
+    }
+
+    .submit-btn:hover {
+      filter: brightness(1.06);
+      box-shadow: 0 16px 34px rgba(217, 70, 239, 0.3);
+    }
+
+    .submit-btn:disabled {
+      cursor: not-allowed;
+      filter: saturate(0.92) brightness(0.94);
+      opacity: 0.9;
+    }
+
+    @keyframes borderBeam {
+      to {
+        --beam-angle: 360deg;
+      }
+    }
+
+    @keyframes floatingLight {
+      from {
+        transform: translate3d(0, 0, 0) scale(1);
+      }
+
+      to {
+        transform: translate3d(28px, -22px, 0) scale(1.12);
+      }
+    }
+
+    @keyframes cardAura {
+      from {
+        transform: translateY(0) rotate(0deg);
+        opacity: 0.65;
+      }
+
+      to {
+        transform: translateY(-18px) rotate(2deg);
+        opacity: 0.95;
+      }
+    }
+
+    @keyframes buttonShine {
+      0% {
+        transform: translateX(-65%) rotate(18deg);
+      }
+
+      45%,
+      100% {
+        transform: translateX(65%) rotate(18deg);
+      }
+    }
+
+    @media (max-width: 370px) {
+      .content {
+        padding: 16px 13px 18px;
+      }
+
+      .form-card {
+        padding: 14px;
+      }
+
+      .avatar-dropzone {
+        min-height: 230px;
+        border-radius: 22px;
+      }
+
+      .avatar-placeholder svg {
+        width: 38px;
+        height: 38px;
+      }
+
+      .avatar-placeholder-text {
+        font-size: 14px;
+      }
+.input {
+        font-size: 16px;
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+
+      body::before,
+      body::after,
+      .card::after,
+      .form-card::after,
+      .submit-btn::before {
+        animation: none !important;
+      }
+    }
+  </style>
+</head>
+
+<body>
+  <main class="page">
+    <section class="card">
+      <div class="content">
+        <form class="form-card" id="bookingStaffForm">
+          <div class="form-inner">
+<section class="avatar-section" aria-label="Ảnh đại diện">
+<input class="avatar-input" id="avatarInput" name="avatar" type="file" accept="image/*" required />
+
+              <label class="avatar-dropzone" for="avatarInput" tabindex="0" aria-label="Thêm ảnh đại diện">
+                <span class="avatar-preview" id="avatarPreview" aria-hidden="true">
+                  <img id="avatarImage" src="" alt="" />
+                  <span class="avatar-placeholder">
+                    <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      <path d="M4.8 6.2H14.7C15.6941 6.2 16.5 7.00589 16.5 8V17.8C16.5 18.7941 15.6941 19.6 14.7 19.6H4.8C3.80589 19.6 3 18.7941 3 17.8V8C3 7.00589 3.80589 6.2 4.8 6.2Z" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>
+                      <path d="M6.1 16.4L9.2 12.9C9.55 12.5 10.18 12.47 10.58 12.82L12 14.05L13.15 12.85C13.53 12.46 14.16 12.45 14.55 12.84L16.1 14.4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"/>
+                      <circle cx="7.8" cy="9.8" r="1.35" stroke="currentColor" stroke-width="1.9"/>
+                      <path d="M18.2 5.2V11.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                      <path d="M15.2 8.2H21.2" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+                    </svg>
+                    <span class="avatar-placeholder-text">Ảnh đại diện</span>
+                  </span>
+                </span>
+              </label>
+            </section>
+
+            <section class="cccd-section" aria-label="Ảnh CCCD">
+              <input class="cccd-input" id="cccdInput" name="cccdImage" type="file" accept="image/*" required />
+
+              <label class="cccd-upload-box" id="cccdUploadBox" for="cccdInput" tabindex="0" aria-label="Tải ảnh CCCD">
+                <span class="cccd-upload-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                    <path d="M6.5 5.5H17.5C18.6046 5.5 19.5 6.39543 19.5 7.5V16.5C19.5 17.6046 18.6046 18.5 17.5 18.5H6.5C5.39543 18.5 4.5 17.6046 4.5 16.5V7.5C4.5 6.39543 5.39543 5.5 6.5 5.5Z" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"/>
+                    <path d="M8.2 9.2H13.4" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                    <path d="M8.2 12H15.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                    <path d="M8.2 14.8H12.8" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                    <path d="M16.6 8.9V12.9" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                    <path d="M14.6 10.9H18.6" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"/>
+                  </svg>
+                </span>
+
+                <span class="cccd-upload-text" id="cccdUploadText">Chọn ảnh CCCD</span>
+              </label>
+            </section>
+
+            <div class="form-grid">
+              <label class="field">
+                <input class="input" name="stageName" type="text" placeholder="Họ và tên/Nghệ danh" autocomplete="name" required />
+              </label>
+
+              <label class="field">
+                <input id="genderInput" name="gender" type="hidden" value="Nam" required />
+
+                <div class="gender-options" role="group" aria-label="Giới tính">
+                  <button class="gender-btn is-selected" type="button" data-gender="Nam" aria-pressed="true">
+                    Nam
+                  </button>
+
+                  <button class="gender-btn" type="button" data-gender="Nữ" aria-pressed="false">
+                    Nữ
+                  </button>
+                </div>
+              </label>
+
+              <label class="field">
+                <input class="input" name="birthday" type="text" placeholder="Ngày sinh" onfocus="this.type='date'" onblur="if (!this.value) this.type='text'" required />
+              </label>
+
+              <label class="field">
+                <input class="input" name="bookingPhone" type="tel" placeholder="Số điện thoại" inputmode="tel" autocomplete="tel" required />
+              </label>
+            </div>
+
+            <p class="form-error" id="formError" aria-live="polite"></p>
+
+            <button class="submit-btn" id="submitBtn" type="submit">
+              <span id="submitBtnText">Cập nhật</span>
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const form = document.getElementById("bookingStaffForm");
+    const avatarInput = document.getElementById("avatarInput");
+    const avatarPreview = document.getElementById("avatarPreview");
+    const avatarImage = document.getElementById("avatarImage");
+    const submitBtn = document.getElementById("submitBtn");
+    const submitBtnText = document.getElementById("submitBtnText");
+    const genderInput = document.getElementById("genderInput");
+    const genderButtons = document.querySelectorAll(".gender-btn");
+    const cccdInput = document.getElementById("cccdInput");
+    const cccdUploadBox = document.getElementById("cccdUploadBox");
+    const cccdUploadText = document.getElementById("cccdUploadText");
+    const formError = document.getElementById("formError");
+
+    let currentAvatarUrl = "";
+
+    avatarInput.addEventListener("change", function () {
+      const file = avatarInput.files && avatarInput.files[0];
+
+      if (!file) {
+        avatarPreview.classList.remove("has-image");
+        avatarImage.src = "";
+        return;
+      }
+
+      if (currentAvatarUrl) {
+        URL.revokeObjectURL(currentAvatarUrl);
+      }
+
+      currentAvatarUrl = URL.createObjectURL(file);
+      avatarImage.src = currentAvatarUrl;
+      avatarPreview.classList.add("has-image");
+      formError.textContent = "";
+    });
+
+    cccdInput.addEventListener("change", function () {
+      const file = cccdInput.files && cccdInput.files[0];
+
+      if (!file) {
+        cccdUploadBox.classList.remove("is-uploaded");
+        cccdUploadText.textContent = "Chọn ảnh CCCD";
+        return;
+      }
+
+      cccdUploadBox.classList.add("is-uploaded");
+      cccdUploadText.textContent = "Đã tải CCCD thành công";
+      formError.textContent = "";
+    });
+
+    genderButtons.forEach(function (button) {
+      button.addEventListener("click", function () {
+        const selectedGender = button.dataset.gender;
+
+        genderInput.value = selectedGender;
+
+        genderButtons.forEach(function (item) {
+          const isSelected = item === button;
+
+          item.classList.toggle("is-selected", isSelected);
+          item.setAttribute("aria-pressed", String(isSelected));
+        });
+      });
+    });
+
+    function validateRequiredInformation() {
+      const avatarFile = avatarInput.files && avatarInput.files[0];
+      const cccdFile = cccdInput.files && cccdInput.files[0];
+      const stageName = form.elements.stageName.value.trim();
+      const gender = genderInput.value.trim();
+      const birthday = form.elements.birthday.value.trim();
+      const phone = form.elements.bookingPhone.value.trim();
+
+      if (!avatarFile) {
+        formError.textContent = "Vui lòng tải ảnh đại diện.";
+        avatarInput.focus();
+        return false;
+      }
+
+      if (!cccdFile) {
+        formError.textContent = "Vui lòng tải ảnh CCCD.";
+        cccdInput.focus();
+        return false;
+      }
+
+      if (!stageName) {
+        formError.textContent = "Vui lòng nhập Họ và tên/Nghệ danh.";
+        form.elements.stageName.focus();
+        return false;
+      }
+
+      if (!gender) {
+        formError.textContent = "Vui lòng chọn giới tính.";
+        return false;
+      }
+
+      if (!birthday) {
+        formError.textContent = "Vui lòng nhập ngày sinh.";
+        form.elements.birthday.focus();
+        return false;
+      }
+
+      if (!phone) {
+        formError.textContent = "Vui lòng nhập số điện thoại.";
+        form.elements.bookingPhone.focus();
+        return false;
+      }
+
+      formError.textContent = "";
+      return true;
+    }
+
+    form.addEventListener("submit", function (event) {
+      event.preventDefault();
+
+      if (!validateRequiredInformation()) {
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtnText.textContent = "Đang lưu";
+      setTimeout(function () {
+        submitBtnText.textContent = "Đã lưu";
+        setTimeout(function () {
+          submitBtnText.textContent = "Cập nhật";
+          submitBtn.disabled = false;
+        }, 2000);
+      }, 800);
+    });
+  </script>
+</body>
+
+</html>

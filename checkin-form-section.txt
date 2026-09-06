@@ -1,0 +1,141 @@
+﻿            <button
+                type="button"
+                id="gps-permission-button"
+                onclick="requestGpsPermission()"
+                class="mobile-action-button hidden bg-blue-600 text-white">
+                Cáº¥p quyá»n vá»‹ trÃ­
+            </button>
+
+            <!-- <button type="button" class="face-primary-action" disabled>
+                XÃ¡c minh tá»± Ä‘á»™ng
+            </button> -->
+
+            <button
+                type="button"
+                onclick="switchCamera()"
+                id="face-camera-switch-button"
+                class="mobile-action-button face-secondary-action hidden"
+                style="display: none;">
+                Äá»•i camera
+            </button>
+
+            <form method="POST" action="{{ route('attendance.store', absolute: false) }}" id="attendance-form">
+                @csrf
+
+                <input type="hidden" name="latitude" id="latitude">
+                <input type="hidden" name="longitude" id="longitude">
+                <input type="hidden" name="face_verified" id="face_verified" value="0">
+                
+                <input
+                    type="hidden"
+                    id="saved_descriptor"
+                    value='@json(auth()->user()->face_descriptor)'>
+            </form>
+            @if (!empty($attendanceConfirmation))
+            <div
+                class="fixed inset-0 z-[3000] flex items-center justify-center bg-slate-950/75 p-4 backdrop-blur-sm"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="attendance-confirmation-title">
+                <div class="w-full max-w-md overflow-hidden rounded-[2rem] bg-white shadow-2xl">
+                    <div class="border-b border-slate-200 px-5 py-4">
+                        <p class="text-xs font-black uppercase tracking-[0.18em] text-amber-600">
+                            Cáº§n xÃ¡c nháº­n
+                        </p>
+
+                        <h2
+                            id="attendance-confirmation-title"
+                            class="mt-1 text-xl font-black text-slate-950">
+                            KhÃ´ng tÃ¬m tháº¥y giá» vÃ o
+                            @if (!empty($attendanceConfirmation['segment_order']))
+                                Ä‘oáº¡n {{ $attendanceConfirmation['segment_order'] }}
+                            @endif
+                        </h2>
+                    </div>
+
+                    <div class="space-y-4 p-5">
+                        <div class="rounded-2xl bg-slate-50 p-4 text-sm text-slate-700">
+                            <div class="font-black text-slate-950">
+                                {{ $attendanceConfirmation['shift_name'] }}
+                            </div>
+
+                            <div class="mt-2 grid gap-1">
+                                <div>
+                                    Báº¯t Ä‘áº§u:
+                                    <strong>
+                                        {{ $attendanceConfirmation['scheduled_start'] }}
+                                    </strong>
+                                </div>
+
+                                <div>
+                                    Káº¿t thÃºc:
+                                    <strong>
+                                        {{ $attendanceConfirmation['scheduled_end'] }}
+                                    </strong>
+                                </div>
+
+                                <div>
+                                    Thá»i Ä‘iá»ƒm hiá»‡n táº¡i:
+                                    <strong>
+                                        {{ $attendanceConfirmation['actual_checkout'] }}
+                                    </strong>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+                            @if (!empty($attendanceConfirmation['segment_order']))
+                                Há»‡ thá»‘ng khÃ´ng tÃ¬m tháº¥y giá» vÃ o cá»§a Ä‘oáº¡n
+                                {{ $attendanceConfirmation['segment_order'] }}.
+                            @else
+                                Há»‡ thá»‘ng khÃ´ng tÃ¬m tháº¥y giá» vÃ o cá»§a ca nÃ y.
+                            @endif
+
+                            @if (!empty($attendanceConfirmation['can_choose_checkin']))
+                                ÄÃ¢y cÃ³ thá»ƒ lÃ  giá» vÃ o muá»™n hoáº·c giá» ra bá»‹ thiáº¿u giá» vÃ o.
+                                Vui lÃ²ng chá»n Ä‘Ãºng hÃ nh Ä‘á»™ng.
+                            @else
+                                ÄÃ¢y lÃ  ca hoáº·c Ä‘oáº¡n ca báº¯t Ä‘áº§u tá»« ngÃ y hÃ´m trÆ°á»›c.
+                                Náº¿u tiáº¿p tá»¥c, há»‡ thá»‘ng chá»‰ ghi nháº­n giá» ra vÃ  chÆ°a tÃ­nh cÃ´ng cho Ä‘áº¿n khi giá» vÃ o Ä‘Æ°á»£c bá»• sung.
+                            @endif
+                        </div>
+
+                        <form
+                            method="POST"
+                            action="{{ route('attendance.store', absolute: false) }}"
+                            class="grid gap-3">
+                            @csrf
+
+                            <input
+                                type="hidden"
+                                name="latitude"
+                                value="{{ $attendanceConfirmation['latitude'] }}">
+
+                            <input
+                                type="hidden"
+                                name="longitude"
+                                value="{{ $attendanceConfirmation['longitude'] }}">
+
+                            <input
+                                type="hidden"
+                                name="face_verified"
+                                value="1">
+
+                            @if (!empty($attendanceConfirmation['segment_order']))
+                                <input
+                                    type="hidden"
+                                    name="attendance_segment_order"
+                                    value="{{ $attendanceConfirmation['segment_order'] }}">
+                            @endif
+
+                            <button
+                                type="submit"
+                                name="attendance_decision"
+                                value="checkout_missing_checkin"
+                                class="min-h-12 rounded-2xl bg-amber-500 px-4 font-black text-white shadow-lg">
+                                Ghi nháº­n giá» ra
+                            </button>
+
+                            @if (!empty($attendanceConfirmation['can_choose_checkin']))
+                            <button
+                                type="submit"

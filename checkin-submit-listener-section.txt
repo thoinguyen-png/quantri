@@ -1,0 +1,58 @@
+﻿            try {
+                const position = await acquireGpsPosition(forceRequest);
+
+                if (!position) {
+                    submitted = false;
+                    return;
+                }
+
+                applyGpsAndSubmit(position);
+            } catch (error) {
+                submitted = false;
+            }
+        }
+
+        async function requestGpsPermission() {
+            if (isRequestingPermission) return;
+
+            hideGpsPermissionButton();
+            setPermissionButtonsDisabled(true);
+
+            try {
+                const position = await acquireGpsPosition(true);
+                setStatus('ÄÃ£ cáº¥p quyá»n vá»‹ trÃ­.', 'green');
+
+                if (document.getElementById('face_verified').value === '1' && position) {
+                    applyGpsAndSubmit(position);
+                }
+            } catch (error) {
+                showGpsPermissionHelp();
+                showPermissionPanel();
+            } finally {
+                setPermissionButtonsDisabled(false);
+            }
+        }
+
+        faceRequiredLater.addEventListener('click', hideFaceRequiredPopup);
+
+        attendanceForm.addEventListener('submit', function(event) {
+            if (attendanceSubmitting) {
+                return;
+            }
+
+            if (!getSavedDescriptor()) {
+                event.preventDefault();
+                showFaceRequiredPopup();
+                return;
+            }
+
+            if (document.getElementById('face_verified').value !== '1') {
+                event.preventDefault();
+                statusBox.className = 'p-3 rounded-2xl bg-red-100 text-red-700 text-sm';
+                statusBox.innerText = 'Vui lÃ²ng xÃ¡c minh khuÃ´n máº·t trÆ°á»›c khi cháº¥m cÃ´ng.';
+            }
+        });
+
+        init();
+    </script>
+</x-app-layout>

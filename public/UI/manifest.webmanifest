@@ -1,0 +1,9 @@
+{
+  "name": "MAXSIM Rating UI",
+  "short_name": "MAXSIM",
+  "start_url": "./00_danh_sach_ui.html",
+  "display": "standalone",
+  "background_color": "#07090d",
+  "theme_color": "#07090d",
+  "icons": []
+}

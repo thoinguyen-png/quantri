@@ -1,0 +1,94 @@
+.rating-qr-card {
+    border: 1px solid #e5e7eb;
+    border-radius: 1rem;
+    background: #fff;
+}
+
+.rating-qr-preview {
+    display: grid;
+    min-height: 13rem;
+    place-items: center;
+    border-radius: 0.875rem;
+    background: #f8fafc;
+}
+
+.rating-qr-preview img {
+    width: min(100%, 13rem);
+    height: auto;
+}
+
+.rating-qr-modal[hidden] {
+    display: none;
+}
+
+.rating-qr-modal {
+    position: fixed;
+    z-index: 90;
+    inset: 0;
+    display: grid;
+    place-items: center;
+    padding: 1rem;
+}
+
+.rating-qr-modal__backdrop {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.6);
+}
+
+.rating-qr-modal__panel {
+    position: relative;
+    width: min(100%, 24rem);
+    border-radius: 1.25rem;
+    background: #fff;
+    padding: 1.25rem;
+    box-shadow: 0 24px 70px rgba(15, 23, 42, 0.28);
+}
+
+.rating-qr-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+}
+
+.rating-qr-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 0.75rem;
+    padding: 0.625rem 0.875rem;
+    font-size: 0.875rem;
+    font-weight: 800;
+}
+
+.rating-qr-button--primary {
+    background: #2563eb;
+    color: #fff;
+}
+
+.rating-qr-button--dark {
+    background: #0f172a;
+    color: #fff;
+}
+
+.rating-qr-button--muted {
+    background: #f1f5f9;
+    color: #334155;
+}
+
+.rating-qr-button--danger {
+    background: #fee2e2;
+    color: #b91c1c;
+}
+
+.rating-qr-button:disabled {
+    opacity: 0.62;
+    cursor: not-allowed;
+}
+
+@media (max-width: 640px) {
+    .rating-qr-actions .rating-qr-button,
+    .rating-qr-actions a {
+        width: 100%;
+    }
+}
