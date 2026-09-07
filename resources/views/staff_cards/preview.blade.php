@@ -247,10 +247,10 @@
         .staff-card__a5-header {
             position: absolute;
             z-index: 5;
-            top: 6.5mm;
+            top: 6mm;
             right: 8mm;
             left: 8mm;
-            height: 26mm;
+            height: 20mm;
             text-align: center;
         }
 
@@ -270,7 +270,7 @@
             width: auto;
             height: auto;
             max-width: 17mm;
-            max-height: 13mm;
+            max-height: 12mm;
             filter: brightness(0) invert(1);
         }
 
@@ -287,47 +287,17 @@
             display: block;
             width: auto;
             height: auto;
-            max-width: 68mm;
-            max-height: 22mm;
+            max-width: 62mm;
+            max-height: 18mm;
             margin: 0 auto;
-        }
-
-        .staff-card__brand-divider {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            width: 58mm;
-            margin: 1.5mm auto 0;
-            gap: 6px;
-        }
-
-        .staff-card__brand-divider-line {
-            flex: 1;
-            height: 1.5px;
-            background: linear-gradient(90deg, rgba(201, 155, 59, 0.05), #c99b3b 50%, #f4cf67);
-            border-radius: 1px;
-        }
-
-        .staff-card__brand-divider-line--right {
-            background: linear-gradient(90deg, #f4cf67, #c99b3b 50%, rgba(201, 155, 59, 0.05));
-        }
-
-        .staff-card__brand-divider-star {
-            color: #f4cf67;
-            font-size: 11px;
-            line-height: 1;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            text-shadow: 0 0 6px rgba(244, 207, 103, 0.6);
         }
 
         .staff-card__a5-profile {
             position: absolute;
             z-index: 5;
-            top: 28.5mm;
+            top: 31mm;
             left: 50%;
-            width: 66mm;
+            width: 64mm;
             transform: translateX(-50%);
             text-align: center;
         }
@@ -337,8 +307,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 60mm;
-            height: 62.5mm;
+            width: 58mm;
+            height: 60mm;
             margin: 0 auto;
             overflow: hidden;
             color: #fff;
@@ -363,7 +333,7 @@
         .staff-card__a5-identity {
             position: absolute;
             z-index: 5;
-            top: 92.5mm;
+            top: 94mm;
             left: 8mm;
             right: 8mm;
             text-align: center;
@@ -374,7 +344,7 @@
 
         .staff-card__a5-identity .staff-card__name {
             color: #ffffff;
-            font-size: 17.5px;
+            font-size: 17px;
             line-height: 1.1;
             font-weight: 700;
             letter-spacing: .5px;
@@ -405,7 +375,7 @@
         }
 
         .staff-card__a5-meta {
-            margin-top: 1mm;
+            margin-top: 1.2mm;
             display: inline-flex;
             flex-direction: column;
             gap: 1mm;
@@ -446,7 +416,7 @@
         .staff-card__a5-rating-section {
             position: absolute;
             z-index: 5;
-            top: 120mm;
+            top: 122mm;
             left: 8mm;
             right: 8mm;
             display: flex;
@@ -456,23 +426,18 @@
             text-align: center;
         }
 
-        .staff-card__a5-rating-title {
-            margin-bottom: 1.6mm;
-            color: var(--card-gold);
-            font-size: 13px;
-            line-height: 1.2;
-            font-weight: 700;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            text-align: center;
-        }
-
-        .staff-card__a5-qr-wrap {
+        .staff-card__a5-qr-row {
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 100%;
-            margin: 0 auto;
+            gap: 4.5mm;
+        }
+
+        .staff-card__a5-scanner-icon {
+            display: block;
+            width: 17mm;
+            height: 22.1mm;
+            flex-shrink: 0;
         }
 
         .staff-card__a5-qr {
@@ -480,8 +445,8 @@
             display: flex;
             align-items: center;
             justify-content: center;
-            width: 34mm;
-            height: 34mm;
+            width: 32mm;
+            height: 32mm;
             padding: .6mm;
             overflow: hidden;
             color: #111;
@@ -502,7 +467,7 @@
 
         .staff-card__a5-code {
             display: inline-block;
-            margin-top: 1.4mm;
+            margin-top: 1.5mm;
             padding: .7mm 5.5mm;
             color: var(--card-gold-light);
             border: .35mm solid var(--card-gold);
@@ -515,7 +480,7 @@
         }
 
         .staff-card__a5-rating-hint {
-            margin-top: 1.4mm;
+            margin-top: 1.5mm;
             color: var(--card-gold);
             font-size: 10.5px;
             font-style: italic;
@@ -524,16 +489,33 @@
         }
 
         .staff-card__a5-bottom-divider {
-            width: 72mm;
-            margin: 1.6mm auto 0;
-            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 78mm;
+            margin: 2.2mm auto 0;
+            gap: 6px;
         }
 
-        .staff-card__a5-bottom-divider-img {
-            display: block;
-            width: 72mm;
-            height: 3.6mm;
-            margin: 0 auto;
+        .staff-card__a5-bottom-divider-line {
+            flex: 1;
+            height: 1.8px;
+            background: linear-gradient(90deg, rgba(201, 155, 59, 0) 0%, rgba(244, 207, 103, 0.7) 35%, #f4cf67 100%);
+            border-radius: 1px;
+        }
+
+        .staff-card__a5-bottom-divider-line--right {
+            background: linear-gradient(90deg, #f4cf67 0%, rgba(244, 207, 103, 0.7) 65%, rgba(201, 155, 59, 0) 0%);
+        }
+
+        .staff-card__a5-bottom-divider-star {
+            color: #f4cf67;
+            font-size: 13.5px;
+            line-height: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            text-shadow: 0 0 8px rgba(244, 207, 103, 0.95), 0 0 14px rgba(244, 207, 103, 0.5);
         }
 
         .staff-card__a5-footer {
@@ -663,40 +645,6 @@
                         <div class="staff-card__vertical-frame"></div>
                         <div class="staff-card__vertical-inner-frame"></div>
 
-                        <svg class="staff-card__circuit staff-card__circuit--left" viewBox="0 0 100 500" preserveAspectRatio="none">
-                            <g stroke="#c99b3b" stroke-width="2" fill="none" opacity="0.32">
-                                <path d="M0,40 L45,40 L70,65 L70,130 L50,150 L50,210 L75,235 L75,320 L50,345 L50,420 L25,445 L0,445" />
-                                <path d="M0,90 L30,90 L55,115 L55,180 L35,200 L35,260 L60,285 L60,370 L35,395 L0,395" />
-                                <path d="M0,160 L20,160 L40,180 L40,240 L20,260 L20,330 L45,355 L45,460 L0,460" />
-                                <path d="M0,230 L15,230 L30,245 L30,300 L15,315 L15,360 L0,360" />
-                                <circle cx="70" cy="130" r="3.5" fill="#c99b3b" />
-                                <circle cx="50" cy="210" r="3.5" fill="#c99b3b" />
-                                <circle cx="75" cy="320" r="3.5" fill="#c99b3b" />
-                                <circle cx="55" cy="180" r="3.5" fill="#c99b3b" />
-                                <circle cx="60" cy="370" r="3.5" fill="#c99b3b" />
-                                <circle cx="40" cy="240" r="3.5" fill="#c99b3b" />
-                                <circle cx="45" cy="460" r="3.5" fill="#c99b3b" />
-                                <circle cx="30" cy="300" r="3.5" fill="#c99b3b" />
-                            </g>
-                        </svg>
-
-                        <svg class="staff-card__circuit staff-card__circuit--right" viewBox="0 0 100 500" preserveAspectRatio="none">
-                            <g stroke="#c99b3b" stroke-width="2" fill="none" opacity="0.32">
-                                <path d="M100,40 L55,40 L30,65 L30,130 L50,150 L50,210 L25,235 L25,320 L50,345 L50,420 L75,445 L100,445" />
-                                <path d="M100,90 L70,90 L45,115 L45,180 L65,200 L65,260 L40,285 L40,370 L65,395 L100,395" />
-                                <path d="M100,160 L80,160 L60,180 L60,240 L80,260 L80,330 L55,355 L55,460 L100,460" />
-                                <path d="M100,230 L85,230 L70,245 L70,300 L85,315 L85,360 L100,360" />
-                                <circle cx="30" cy="130" r="3.5" fill="#c99b3b" />
-                                <circle cx="50" cy="210" r="3.5" fill="#c99b3b" />
-                                <circle cx="25" cy="320" r="3.5" fill="#c99b3b" />
-                                <circle cx="45" cy="180" r="3.5" fill="#c99b3b" />
-                                <circle cx="40" cy="370" r="3.5" fill="#c99b3b" />
-                                <circle cx="60" cy="240" r="3.5" fill="#c99b3b" />
-                                <circle cx="55" cy="460" r="3.5" fill="#c99b3b" />
-                                <circle cx="70" cy="300" r="3.5" fill="#c99b3b" />
-                            </g>
-                        </svg>
-
                         <header class="staff-card__a5-header">
                             <div class="staff-card__maxsim-slot">
                                 @if (! empty($card['maxsim_logo_url']))
@@ -712,12 +660,6 @@
                                 @if (! empty($card['branch_logo_url']))
                                     <img src="{{ $card['branch_logo_url'] }}" alt="Logo cơ sở">
                                 @endif
-
-                                <div class="staff-card__brand-divider">
-                                    <div class="staff-card__brand-divider-line staff-card__brand-divider-line--left"></div>
-                                    <span class="staff-card__brand-divider-star">★</span>
-                                    <div class="staff-card__brand-divider-line staff-card__brand-divider-line--right"></div>
-                                </div>
                             </div>
                         </header>
 
@@ -762,11 +704,21 @@
                         </section>
 
                         <section class="staff-card__a5-rating-section">
-                            <div class="staff-card__a5-rating-title">
-                                GHI NHẬN Ý KIẾN
-                            </div>
+                            <div class="staff-card__a5-qr-row">
+                                <svg class="staff-card__a5-scanner-icon" viewBox="0 0 100 130" fill="none" stroke="#d4a53b" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">
+                                    <rect x="14" y="6" width="60" height="114" rx="10" stroke="#d4a53b" stroke-width="3.2" />
+                                    <line x1="36" y1="16" x2="52" y2="16" stroke-width="3" />
+                                    <circle cx="44" cy="107" r="3.2" stroke-width="2.5" />
+                                    <path d="M26 42 L26 32 L36 32" stroke-width="2.8" />
+                                    <path d="M62 42 L62 32 L52 32" stroke-width="2.8" />
+                                    <path d="M26 66 L26 76 L36 76" stroke-width="2.8" />
+                                    <path d="M62 66 L62 76 L52 76" stroke-width="2.8" />
+                                    <circle cx="44" cy="54" r="11" stroke-width="2.5" />
+                                    <circle cx="44" cy="54" r="5" stroke-width="2" />
+                                    <circle cx="68" cy="94" r="13" fill="#0c0d12" stroke="#d4a53b" stroke-width="2.6" />
+                                    <polygon points="68,85.5 70.6,90.8 76.5,91.7 72.2,95.9 73.2,101.8 68,99 62.8,101.8 63.8,95.9 59.5,91.7 65.4,90.8" fill="none" stroke="#d4a53b" stroke-width="1.6" stroke-linejoin="round" />
+                                </svg>
 
-                            <div class="staff-card__a5-qr-wrap">
                                 <div class="staff-card__a5-qr">
                                     @if (! empty($card['qr_svg_url']))
                                         <img src="{{ $card['qr_svg_url'] }}" alt="QR đánh giá">
@@ -785,11 +737,9 @@
                             </div>
 
                             <div class="staff-card__a5-bottom-divider">
-                                <img
-                                    class="staff-card__a5-bottom-divider-img"
-                                    src="data:image/png;base64,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"
-                                    alt=""
-                                >
+                                <div class="staff-card__a5-bottom-divider-line staff-card__a5-bottom-divider-line--left"></div>
+                                <span class="staff-card__a5-bottom-divider-star">★</span>
+                                <div class="staff-card__a5-bottom-divider-line staff-card__a5-bottom-divider-line--right"></div>
                             </div>
                         </section>
 

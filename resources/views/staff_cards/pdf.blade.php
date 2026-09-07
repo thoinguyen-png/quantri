@@ -330,10 +330,10 @@
         .vertical-header {
             position: absolute;
             z-index: 5;
-            top: 6.5mm;
+            top: 6mm;
             left: 8mm;
             width: 132mm;
-            height: 26mm;
+            height: 20mm;
             text-align: center;
         }
 
@@ -349,7 +349,7 @@
             display: block;
             width: 17mm;
             height: auto;
-            max-height: 13mm;
+            max-height: 12mm;
             margin: 0 auto;
         }
 
@@ -366,33 +366,26 @@
             display: block;
             width: auto;
             height: auto;
-            max-width: 68mm;
-            max-height: 22mm;
+            max-width: 62mm;
+            max-height: 18mm;
             margin: 0 auto;
-        }
-
-        .vertical-divider-img {
-            display: block;
-            width: 58mm;
-            height: 2.9mm;
-            margin: 1.5mm auto 0;
         }
 
         .vertical-profile {
             position: absolute;
             z-index: 5;
-            top: 28.5mm;
+            top: 31mm;
             left: 50%;
-            width: 66mm;
-            margin-left: -33mm;
+            width: 64mm;
+            margin-left: -32mm;
             text-align: center;
         }
 
         .vertical-avatar {
             box-sizing: border-box;
             display: block;
-            width: 60mm;
-            height: 62.5mm;
+            width: 58mm;
+            height: 60mm;
             margin: 0 auto;
             overflow: hidden;
             color: #fff;
@@ -414,7 +407,7 @@
         .vertical-identity {
             position: absolute;
             z-index: 5;
-            top: 92.5mm;
+            top: 94mm;
             left: 8mm;
             width: 132mm;
             margin: 0 auto;
@@ -457,7 +450,7 @@
         }
 
         .vertical-meta-table {
-            margin: 1mm auto 0;
+            margin: 1.2mm auto 0;
             border-collapse: collapse;
         }
 
@@ -489,35 +482,43 @@
         .vertical-rating-section {
             position: absolute;
             z-index: 5;
-            top: 120mm;
+            top: 122mm;
             left: 8mm;
             width: 132mm;
             text-align: center;
         }
 
-        .vertical-rating-title {
-            margin: 0 0 1.6mm 0;
-            color: #d4a53b;
-            font-size: 9.8pt;
-            line-height: 1.2;
-            font-weight: 700;
-            letter-spacing: 1.6pt;
-            text-transform: uppercase;
-            text-align: center;
+        .vertical-rating-table {
+            margin: 0 auto;
+            border-collapse: collapse;
         }
 
-        .vertical-qr-wrap {
-            width: 100%;
-            margin: 0 auto;
-            text-align: center;
+        .vertical-scanner-cell {
+            width: 21mm;
+            vertical-align: middle;
+            text-align: right;
+            padding-right: 4mm;
+        }
+
+        .vertical-scanner-icon {
+            display: inline-block;
+            width: 17mm;
+            height: 22.1mm;
+            vertical-align: middle;
+        }
+
+        .vertical-qr-cell {
+            width: 33mm;
+            vertical-align: middle;
+            text-align: left;
         }
 
         .vertical-qr-box {
             box-sizing: border-box;
             display: inline-block;
-            width: 34mm;
-            height: 34mm;
-            margin: 0 auto;
+            width: 32mm;
+            height: 32mm;
+            margin: 0;
             padding: .6mm;
             overflow: hidden;
             color: #111;
@@ -536,12 +537,12 @@
         .vertical-no-qr {
             color: #999;
             font-size: 7.5pt;
-            line-height: 32mm;
+            line-height: 30mm;
         }
 
         .vertical-code {
             display: inline-block;
-            margin: 1.4mm auto 0;
+            margin: 1.5mm auto 0;
             padding: .7mm 5.5mm;
             color: #f2ce70;
             border: .35mm solid #c99b3b;
@@ -554,7 +555,7 @@
         }
 
         .vertical-rating-hint {
-            margin: 1.4mm auto 0;
+            margin: 1.5mm auto 0;
             color: #c99b3b;
             font-size: 7.8pt;
             font-style: italic;
@@ -563,15 +564,15 @@
         }
 
         .vertical-bottom-divider {
-            width: 72mm;
-            margin: 1.6mm auto 0;
+            width: 78mm;
+            margin: 2.0mm auto 0;
             text-align: center;
         }
 
         .vertical-bottom-divider-img {
             display: block;
-            width: 72mm;
-            height: 3.6mm;
+            width: 78mm;
+            height: 3.9mm;
             margin: 0 auto;
         }
 

@@ -144,7 +144,7 @@ class AdminRatingDashboardAndSettingsTest extends TestCase
 
         $this->get(route('qr-rating.short.show', ['publicRatingCode' => $employee->fresh()->public_rating_code]))
             ->assertOk()
-            ->assertSee('ĐÁNH GIÁ PHỤC VỤ');
+            ->assertSee('ĐÁNH GIÁ DỊCH VỤ');
 
         $this->withCookie('guest_rating_token', str_pad('old-token-after-regenerate', 64, '-'))
             ->post(route('qr-rating.store', ['token' => $oldToken]), [
@@ -168,7 +168,7 @@ class AdminRatingDashboardAndSettingsTest extends TestCase
 
         $this->get(route('qr-rating.short.show', ['publicRatingCode' => $employee->fresh()->public_rating_code]))
             ->assertOk()
-            ->assertSee('ĐÁNH GIÁ PHỤC VỤ');
+            ->assertSee('ĐÁNH GIÁ DỊCH VỤ');
 
         $this->get(route('qr-rating.show', ['token' => $newRawToken]))
             ->assertRedirect(route('qr-rating.short.show', ['publicRatingCode' => $employee->fresh()->public_rating_code]));
